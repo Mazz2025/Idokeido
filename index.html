@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>住所から緯度経度を取得</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top for better content display */
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            max-width: 900px;
+            width: 100%;
+        }
+        .btn {
+            @apply px-6 py-3 rounded-lg text-white font-semibold transition-all duration-300 ease-in-out;
+            @apply shadow-md hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-opacity-75;
+        }
+        .btn-primary {
+            @apply bg-blue-600 hover:bg-blue-700 focus:ring-blue-500;
+        }
+        .btn-success {
+            @apply bg-green-600 hover:bg-green-700 focus:ring-green-500;
+        }
+        .btn-disabled {
+            @apply bg-gray-400 cursor-not-allowed;
+        }
+        input[type="file"] {
+            @apply block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none;
+        }
+        input[type="text"], select {
+            @apply block w-full px-4 py-2 text-gray-900 border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500;
+        }
+        .message-box {
+            @apply p-4 mt-4 rounded-lg;
+        }
+        .message-info {
+            @apply bg-blue-100 text-blue-800;
+        }
+        .message-success {
+            @apply bg-green-100 text-green-800;
+        }
+        .message-error {
+            @apply bg-red-100 text-red-800;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">住所から緯度経度を取得</h1>
+
+        <div class="mb-6 bg-blue-50 p-4 rounded-lg shadow-sm">
+            <h2 class="text-xl font-semibold text-blue-800 mb-3">はじめに</h2>
+            <p class="text-gray-700 mb-2">
+                このツールは、CSVファイル内の住所情報から緯度と経度を取得し、新しいCSVファイルとして出力します。
+            </p>
+            <p class="text-gray-700 font-medium">
+                <span class="text-red-600 font-bold">重要:</span> Google スプレッドシートをご利用の場合、「ファイル」>「ダウンロード」>「カンマ区切り形式（.csv）」でCSVファイルをダウンロードしてからアップロードしてください。
+            </p>
+        </div>
+
+        <div class="mb-4">
+            <label for="csvFile" class="block text-gray-700 text-sm font-bold mb-2">CSVファイルをアップロード:</label>
+            <input type="file" id="csvFile" accept=".csv" class="mb-4">
+        </div>
+
+        <div class="mb-4">
+            <label for="encodingSelect" class="block text-gray-700 text-sm font-bold mb-2">文字コード:</label>
+            <select id="encodingSelect" class="mb-4">
+                <option value="UTF-8">UTF-8 (推奨)</option>
+                <option value="Shift_JIS">Shift-JIS</option>
+            </select>
+        </div>
+
+        <div id="headerDisplay" class="mb-4 p-3 bg-gray-100 rounded-lg hidden">
+            <p class="text-gray-700 text-sm font-bold mb-2">認識されたヘッダー:</p>
+            <code id="parsedHeaders" class="block bg-gray-200 p-2 rounded-md text-sm text-gray-800 break-all"></code>
+        </div>
+
+        <div class="mb-6">
+            <label for="addressColumn" class="block text-gray-700 text-sm font-bold mb-2">住所の列名（例: 住所, Address）:</label>
+            <input type="text" id="addressColumn" placeholder="例: 住所" class="mb-4">
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 mb-6">
+            <button id="geocodeButton" class="btn btn-primary flex-1">緯度経度を取得</button>
+            <button id="downloadCsvButton" class="btn btn-success flex-1" disabled>CSVをダウンロード</button>
+        </div>
+
+        <div id="messageBox" class="message-box message-info hidden">
+            <p id="messageText"></p>
+        </div>
+
+        <div id="progressBarContainer" class="w-full bg-gray-200 rounded-full h-4 mt-6 hidden">
+            <div id="progressBar" class="bg-blue-600 h-4 rounded-full text-xs text-white flex items-center justify-center" style="width: 0%">
+                <span id="progressText">0%</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM要素の取得
+        const csvFileInput = document.getElementById('csvFile');
+        const encodingSelect = document.getElementById('encodingSelect'); // 追加
+        const addressColumnInput = document.getElementById('addressColumn');
+        const geocodeButton = document.getElementById('geocodeButton');
+        const downloadCsvButton = document.getElementById('downloadCsvButton');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const progressBarContainer = document.getElementById('progressBarContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const headerDisplay = document.getElementById('headerDisplay');
+        const parsedHeadersText = document.getElementById('parsedHeaders');
+
+        let parsedData = []; // パースされたCSVデータを保持
+        let headers = [];    // CSVヘッダーを保持
+        let resultData = []; // 緯度経度を追加した結果データを保持
+
+        // メッセージ表示関数
+        function showMessage(text, type = 'info') {
+            messageBox.classList.remove('hidden', 'message-info', 'message-success', 'message-error');
+            messageText.textContent = text;
+            if (type === 'info') {
+                messageBox.classList.add('message-info');
+            } else if (type === 'success') {
+                messageBox.classList.add('message-success');
+            } else if (type === 'error') {
+                messageBox.classList.add('message-error');
+            }
+        }
+
+        // プログレスバー表示関数
+        function updateProgressBar(progress) {
+            progressBarContainer.classList.remove('hidden');
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${Math.round(progress)}%`;
+        }
+
+        // CSVファイル読み込みイベントリスナー
+        csvFileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+            const encoding = encodingSelect.value; // 選択された文字コードを取得
+
+            reader.onload = (e) => {
+                const text = e.target.result;
+                parseCsv(text);
+                showMessage('CSVファイルが読み込まれました。');
+                geocodeButton.disabled = false;
+                downloadCsvButton.disabled = true; // 新しいファイルを読み込んだらダウンロードボタンを無効化
+                progressBarContainer.classList.add('hidden'); // プログレスバーをリセット
+            };
+            reader.onerror = () => {
+                showMessage('ファイルの読み込み中にエラーが発生しました。選択した文字コードが正しくない可能性があります。', 'error');
+                geocodeButton.disabled = true;
+            };
+            reader.readAsText(file, encoding); // 選択された文字コードで読み込む
+        });
+
+        // CSVパース関数
+        function parseCsv(csvText) {
+            const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== ''); // 空行を除去
+            if (lines.length === 0) {
+                parsedData = [];
+                headers = [];
+                parsedHeadersText.textContent = ''; // ヘッダー表示をクリア
+                headerDisplay.classList.add('hidden'); // ヘッダー表示を隠す
+                return;
+            }
+            // 区切り文字の自動判別（カンマ、セミコロン、タブ）
+            let separator = ',';
+            if (lines[0].includes(';')) {
+                separator = ';';
+            } else if (lines[0].includes('\t')) {
+                separator = '\t';
+            }
+
+            headers = lines[0].split(separator).map(h => h.trim()); // ヘッダーをトリム
+            parsedData = lines.slice(1).map(line => {
+                const values = line.split(separator);
+                const row = {};
+                headers.forEach((header, i) => {
+                    row[header] = values[i] ? values[i].trim() : ''; // 行のデータもトリム
+                });
+                return row;
+            });
+
+            // 認識されたヘッダーを表示
+            parsedHeadersText.textContent = JSON.stringify(headers);
+            headerDisplay.classList.remove('hidden');
+        }
+
+        // 国土地理院のAPIで緯度経度を取得する関数
+        async function getLatLonFromAddress(address) {
+            if (!address) {
+                return { latitude: '', longitude: '' };
+            }
+            const encodedAddress = encodeURIComponent(address);
+            // 国土地理院の住所検索APIを使用
+            const apiUrl = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodedAddress}`;
+
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    console.error(`APIリクエスト失敗: ${response.status} ${response.statusText} for address: ${address}`);
+                    return { latitude: 'エラー', longitude: 'エラー' };
+                }
+                const data = await response.json();
+
+                // 緯度経度情報が配列で返されるため、最初の要素を確認
+                if (data && data.length > 0 && data[0].geometry && data[0].geometry.coordinates) {
+                    // 座標は [経度, 緯度] の順で返される
+                    const longitude = data[0].geometry.coordinates[0];
+                    const latitude = data[0].geometry.coordinates[1];
+                    return { latitude, longitude };
+                } else {
+                    console.warn(`住所 "${address}" の緯度経度が見つかりませんでした。`);
+                    return { latitude: '見つかりません', longitude: '見つかりません' };
+                }
+            } catch (error) {
+                console.error(`住所 "${address}" の緯度経度取得中にエラーが発生しました:`, error);
+                return { latitude: 'エラー', longitude: 'エラー' };
+            }
+        }
+
+        // 緯度経度取得ボタンクリックイベントリスナー
+        geocodeButton.addEventListener('click', async () => {
+            const addressColumnName = addressColumnInput.value.trim(); // 入力された列名もトリム
+
+            if (!addressColumnName) {
+                showMessage('住所の列名を入力してください。', 'error');
+                return;
+            }
+            if (parsedData.length === 0) {
+                showMessage('CSVファイルを読み込んでください。', 'error');
+                return;
+            }
+            // `includes`の代わりに`some`と厳密な比較を使用して、ヘッダーに完全に一致するものが存在するかを確認
+            if (!headers.some(h => h === addressColumnName)) {
+                showMessage(`指定された列名 "${addressColumnName}" がCSVヘッダーに見つかりません。`, 'error');
+                return;
+            }
+
+            geocodeButton.disabled = true;
+            downloadCsvButton.disabled = true;
+            showMessage('緯度経度を取得中です...（時間がかかる場合があります）', 'info');
+            updateProgressBar(0);
+
+            resultData = [];
+            const totalAddresses = parsedData.length;
+            let processedCount = 0;
+
+            // 新しいヘッダーを作成
+            const newHeaders = [...headers];
+            if (!newHeaders.includes('緯度')) {
+                newHeaders.push('緯度');
+            }
+            if (!newHeaders.includes('経度')) {
+                newHeaders.push('経度');
+            }
+            resultData.push(newHeaders.join(',')); // ヘッダー行を追加
+
+            for (const row of parsedData) {
+                const address = row[addressColumnName];
+                const { latitude, longitude } = await getLatLonFromAddress(address);
+
+                // 既存の行データに緯度経度を追加
+                const newRow = { ...row };
+                newRow['緯度'] = latitude;
+                newRow['経度'] = longitude;
+
+                // 新しいヘッダーの順番に合わせて値を取得
+                const rowValues = newHeaders.map(header => {
+                    const value = newRow[header];
+                    // CSVの値を適切にエスケープ（カンマや引用符を含む場合）
+                    if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r'))) {
+                        return `"${value.replace(/"/g, '""')}"`;
+                    }
+                    return value;
+                });
+                resultData.push(rowValues.join(','));
+
+                processedCount++;
+                const progress = (processedCount / totalAddresses) * 100;
+                updateProgressBar(progress);
+
+                // APIへの負荷を軽減するため、少し待つ
+                await new Promise(resolve => setTimeout(resolve, 100)); // 100ミリ秒待機
+            }
+
+            showMessage('緯度経度の取得が完了しました！', 'success');
+            geocodeButton.disabled = false;
+            downloadCsvButton.disabled = false;
+            updateProgressBar(100);
+        });
+
+        // CSVダウンロードボタンクリックイベントリスナー
+        downloadCsvButton.addEventListener('click', () => {
+            if (resultData.length === 0) {
+                showMessage('まず緯度経度を取得してください。', 'error');
+                return;
+            }
+
+            const csvContent = resultData.join('\n');
+            // ダウンロード時の文字コードはUTF-8-BOMとするのがExcelで文字化けしにくい
+            const blob = new Blob(['\ufeff', csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '住所_緯度経度_変換済み.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url); // 不要になったURLを解放
+            showMessage('CSVファイルをダウンロードしました。', 'success');
+        });
+
+        // 初期状態
+        geocodeButton.disabled = true;
+        downloadCsvButton.disabled = true;
+    </script>
+</body>
+</html>

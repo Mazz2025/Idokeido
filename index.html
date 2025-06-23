@@ -362,31 +362,24 @@
         function normalizeAddressHyphens(address) {
             let normalizedAddress = address;
 
-            // Pattern 1: X丁目Y-Z -> X丁目Y番Z号 (例: '西葛西3丁目15-12' -> '西葛西3丁目15番12号')
-            // '丁目'の後に続く数字-ハイフン-数字のパターンを特定し、'番'と'号'を追加
+            // Rule 1: "数字丁目"の後の"数字-数字"パターンを"数字番数字号"に変換
+            // 例: "西葛西3丁目15-12" -> "西葛西3丁目15番12号"
+            // このルールを最初に適用することで、丁目以降の番地を正確に処理
             normalizedAddress = normalizedAddress.replace(/(\d+丁目)(\d+)[-ー](\d+)(?![番号])/g, '$1$2番$3号');
 
-            // Pattern 2: 数字-数字-数字 を X丁目Y番Z号 に、または 数字-数字 を X番Y号 に変換 (一般的なケース)
-            // '丁目'や'番'、'号'が直前にない数値のハイフン連結パターンに適用
-            // 例: '〇〇町1-2-3' -> '〇〇町1丁目2番3号'
-            // 例: '〇〇町1-2' -> '〇〇町1番2号'
-            // このパターンは、既に'丁目'の後に変換された部分を再処理しないように注意しています。
-            normalizedAddress = normalizedAddress.replace(/(^|[^丁番号\d])(\d+)[-ー](\d+)(?:[-ー](\d+))?(?![丁番号])/g, (match, prefix, p1, p2, p3) => {
-                let result = prefix; // マッチしたプレフィックス（空文字列または非数字文字）を保持
-                if (p3) {
-                    result += p1 + '丁目' + p2 + '番' + p3 + '号';
-                } else {
-                    // ここでp1に'丁目'が付加されてしまう問題があったため、単純に'番'と'号'を付加する
-                    result += p1 + '番' + p2 + '号';
-                }
-                return result;
-            });
+            // Rule 2: 一般的な"数字-数字-数字"パターンを"数字丁目数字番数字号"に変換
+            // ただし、既に「丁目」「番」「号」が付いている場合は変換しない
+            // 例: "1-2-3" -> "1丁目2番3号"
+            normalizedAddress = normalizedAddress.replace(/(\d+)[-ー](\d+)[-ー](\d+)(?![丁番号])/g, '$1丁目$2番$3号');
 
-            // Pattern 3: X番Y -> X番Y号 (例: "1番2" -> "1番2号")
-            normalizedAddress = normalizedAddress.replace(/(\d+番)(\d+)(?![号])/g, '$1$2号');
+            // Rule 3: 一般的な"数字-数字"パターンを"数字番数字号"に変換
+            // ただし、既に「丁目」「番」「号」が付いている場合は変換しない
+            // 例: "15-12" (丁目などが先行しない場合) -> "15番12号"
+            normalizedAddress = normalizedAddress.replace(/(\d+)[-ー](\d+)(?![丁番号])/g, '$1番$2号');
 
-            // Pattern 4: X丁目Y番Z -> X丁目Y番Z号 (例: "1丁目2番3" -> "1丁目2番3号")
-            normalizedAddress = normalizedAddress.replace(/(\d+丁(?:目)?\d+番)(\d+)(?![号])/g, '$1$2号');
+            // Rule 4: 最後に、数字の後に「号」がない場合に「号」を追加
+            // 例: "1番2" -> "1番2号", "3丁目15番12" -> "3丁目15番12号"
+            normalizedAddress = normalizedAddress.replace(/(\d+)(?![丁番号])$/, '$1号'); // 文末の数字に号を追加
 
             return normalizedAddress;
         }
@@ -458,7 +451,9 @@
                 
                 console.log(`getCityCode: Comparing with master data entry: Pref: "${itemPref}", City: "${itemCity}", Code: "${item['code']}"`);
                 const prefMatch = itemPref === pref;
-                const cityMatch = (itemCity === city || (itemCity && city.startsWith(itemCity))); // itemCityが空でない場合のみstartsWithを適用
+                // 市区町村名のマッチングロジックを微調整
+                // マスターデータ側の市区町村が空でない && (完全に一致 OR マスターデータ側の市区町村で始まる)
+                const cityMatch = (itemCity && (itemCity === city || city.startsWith(itemCity))); 
                 console.log(`getCityCode: Match condition results - Pref Match: ${prefMatch}, City Match: ${cityMatch}`);
                 return prefMatch && cityMatch;
             });
@@ -606,7 +601,7 @@
                 cityCodesData = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data; 
                 console.log('市区町村コードデータ読み込み完了:', cityCodesData.length, '件');
                 if (cityCodesData.length > 0) {
-                    // showMessage(`市区町村コードデータ ${cityCodesData.length} 件を読み込みました。`, 'success'); // 複数データ読み込みのメッセージはonloadで一括
+                    showMessage(`市区町村コードデータ ${cityCodesData.length} 件を読み込みました。`, 'success');
                 } else {
                     showMessage('市区町村コードデータは読み込まれましたが、有効なデータが含まれていませんでした。CSVファイルの内容を確認してください。', 'error');
                 }

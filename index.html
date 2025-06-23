@@ -174,12 +174,12 @@
         // --- 出力CSVファイルの最終的なヘッダー順とマッピング ---
         const OUTPUT_HEADERS = [
             '企業コード', '店舗コード', 'ロケール', '店舗名(漢字)', '店舗名(カナ)', '請求先コード1',
-            '請求先コード2', '使用不可フラグ', '郵便番号', 'L2コード', '市区町村コード', // ★市区町村コードを再追加
+            '請求先コード2', '使用不可フラグ', '郵便番号', 'L2コード', '市区町村コード',
             '国交省住所1', 
             '国交省住所2', '国交省住所補足', '住所1', '住所2', '住所3', '電話番号', 'FAX番号',
             '担当部門', '担当者役職', '担当者名', '担当者MAIL', '代表業態コード', '業態中分類コード',
             '旧業態コード', '旧業態コード中分類', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
-            '鉄道最寄駅', '最寄り駅距離(km)', // 最寄り駅と距離を追加
+            '鉄道最寄駅', // '最寄り駅距離(km)' を削除
             'バス最寄駅', '添付ファイルコード', 'ファイル名', 'ファイルアップロード日',
             'SEJDO名', '免許品', '実績年月日1', '実績作業量1', '実績年月日2', '実績作業量2',
             '実績年月日3', '実績作業量3', '登録日時', '登録ユーザID', '更新日時', '更新ユーザID'
@@ -710,7 +710,7 @@
                 
                 // --- 最寄り駅の検索 ---
                 let nearestStationNameValue = '';
-                let nearestStationDistanceValue = '';
+                // let nearestStationDistanceValue = ''; // 最寄り駅距離を削除
 
                 // 緯度経度が有効な数値で、かつ駅データが読み込まれている場合にのみ最寄り駅を検索
                 if (stationsData.length > 0 && typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
@@ -729,14 +729,14 @@
                     }
                     if (nearestStation) {
                         nearestStationNameValue = nearestStation.station_name;
-                        nearestStationDistanceValue = minDistance.toFixed(2); // 小数点以下2桁に丸める
+                        // nearestStationDistanceValue = minDistance.toFixed(2); // 小数点以下2桁に丸める - 最寄り駅距離を削除
                     }
                 } else if (stationsData.length === 0) {
                     nearestStationNameValue = '駅データなし';
-                    nearestStationDistanceValue = '駅データなし';
+                    // nearestStationDistanceValue = '駅データなし'; // 最寄り駅距離を削除
                 } else {
                     nearestStationNameValue = '住所不明';
-                    nearestStationDistanceValue = '住所不明';
+                    // nearestStationDistanceValue = '住所不明'; // 最寄り駅距離を削除
                 }
 
                 // --- 市区町村コードの取得 ---
@@ -800,7 +800,7 @@
                 outputRowValues['緯度'] = latitude;
                 outputRowValues['経度'] = longitude;
                 outputRowValues['鉄道最寄駅'] = nearestStationNameValue;
-                outputRowValues['最寄り駅距離(km)'] = nearestStationDistanceValue;
+                // outputRowValues['最寄り駅距離(km)'] = nearestStationDistanceValue; // 最寄り駅距離を削除
                 outputRowValues['市区町村コード'] = cityCodeValue;
                 // 'バス最寄駅'などの他の項目は、もし入力CSVに同名のヘッダーが存在すれば、
                 // 上記のステップ2で自動的にコピーされています。

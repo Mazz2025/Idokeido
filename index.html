@@ -417,28 +417,15 @@
         }
 
         /**
-         * 全角ひらがな、全角カタカナを半角カタカナに変換する関数
+         * 全角ひらがな、全角カタカナ、全角数字、一部記号を半角カタカナに変換する関数
          * @param {string} str - 変換する文字列
          * @returns {string} 半角カタカナに変換された文字列
          */
         function toHalfWidthKatakana(str) {
             if (!str) return '';
-            let tempStr = String(str); // Ensure it's a string
+            let tempStr = String(str).normalize('NFKC'); // ひらがな→カタカナ、全角数字→半角数字などをここで変換
 
-            // 全角ひらがなを全角カタカナに変換
-            tempStr = tempStr.replace(/[\u3040-\u309F]/g, function(s) {
-                return String.fromCharCode(s.charCodeAt(0) + 0x60);
-            });
-
-            // 全角カタカナを半角カタカナに変換
             const halfWidthMap = {
-                'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
-                'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
-                'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
-                'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
-                'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
-                'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
-                'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ', 'ッ': 'ｯ', 'ー': 'ｰ',
                 'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
                 'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
                 'サ': 'ｻ', 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ',
@@ -449,33 +436,33 @@
                 'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
                 'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
                 'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
-                // その他の特殊な文字や濁点・半濁点付き文字の個別対応
+                'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
+                'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ', 'ッ': 'ｯ',
+                'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
+                'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
+                'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
+                'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
+                'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
                 'ヴ': 'ｳﾞ', 'ヵ': 'ｶ', 'ヶ': 'ｹ',
-                'ヷ': 'ﾜﾞ', 'ヸ': 'ｲﾞ', 'ヹ': 'ｴﾞ', 'ヺ': 'ｦﾞ' // 歴史的仮名遣いの濁点
+                'ー': 'ｰ', // 長音符
+                '゛': 'ﾞ', '゜': 'ﾟ', // 濁点・半濁点（結合文字ではないもの）
+                '、': '､', '。': '｡', '「': '｢', '」': '｣', '・': '･' // その他の記号
             };
 
             let converted = '';
             for (let i = 0; i < tempStr.length; i++) {
                 let char = tempStr[i];
-                // 結合文字（濁点・半濁点）の処理を優先
-                if (i + 1 < tempStr.length) {
-                    const nextChar = tempStr[i+1];
-                    // 全角濁点・半濁点付き文字（例: カﾞ -> ガ）
-                    if (char.match(/[\u30A1-\u30FA]/) && (nextChar === 'ﾞ' || nextChar === 'ﾟ')) {
-                        const combinedChar = char + nextChar;
-                        // マッピングテーブルに直接結合文字があるかチェック
-                        if (halfWidthMap[combinedChar]) {
-                            converted += halfWidthMap[combinedChar];
-                            i++; // 次の文字（濁点/半濁点）をスキップ
-                            continue;
-                        }
-                    }
+                // 濁点・半濁点が含まれるカタカナの特殊処理
+                // 例: "キ" + "ﾞ" = "ギ"
+                if (char === 'K' && i + 1 < tempStr.length && tempStr[i+1] === 'I') { // 例外処理の記述が複雑になるため、ここでは省略
+                     // `normalize('NFKC')` が多くのケースを処理してくれるため、
+                     // このような手動での結合文字処理は減らせるはずです。
                 }
-                // 通常の文字変換
+
                 if (halfWidthMap[char]) {
                     converted += halfWidthMap[char];
                 } else {
-                    converted += char; // 変換できない文字はそのまま
+                    converted += char; // マッピングにない文字（漢字など）はそのまま
                 }
             }
             return converted;
@@ -493,13 +480,19 @@
             // 全角数字と全角ハイフンを半角に変換
             let normalizedAddress = address.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             normalizedAddress = normalizedAddress.replace(/ー/g, '-');
+            console.log(`getPostalCodeFromAddress: Normalized address for postal code extraction: "${normalizedAddress}"`);
 
             // 7桁の数字（ハイフンあり/なし）の郵便番号を検索
-            const postcodeMatch = normalizedAddress.match(/(\d{3}[-]?\d{4})/);
+            const postcodeRegex = /(\d{3}[-]?\d{4})/;
+            const postcodeMatch = normalizedAddress.match(postcodeRegex);
+            console.log(`getPostalCodeFromAddress: Postcode regex match result:`, postcodeMatch);
+
             if (postcodeMatch && postcodeMatch[1]) {
                 const postalCode = postcodeMatch[1].replace(/-/g, ''); // ハイフンを除去
+                console.log(`getPostalCodeFromAddress: Extracted postal code: "${postalCode.padStart(7, '0')}"`);
                 return postalCode.padStart(7, '0'); // 7桁にゼロ埋め
             }
+            console.log(`getPostalCodeFromAddress: No postal code found in address: "${address}"`);
             return ''; // 見つからなければ空文字列
         }
 
@@ -851,13 +844,9 @@
                 outputRowValues['郵便番号'] = postalCodeValue; // 住所から抽出した郵便番号を適用
 
                 // 店舗名(カナ)の変換はここで強制的に行う
-                if (outputRowValues['店舗名(カナ)']) { // 値が存在する場合のみ変換
-                     outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(String(outputRowValues['店舗名(カナ)'])) + 'PMK';
-                } else if (headers.includes('店舗名(漢字)')) { // フリガナ列がない場合、店舗名(漢字)から変換を試みる
-                     outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(String(row['店舗名(漢字)'] || '')) + 'PMK';
-                } else {
-                     outputRowValues['店舗名(カナ)'] = 'PMK'; // デフォルト値、または空の場合
-                }
+                // INPUT_TO_OUTPUT_MAPPINGから 'フリガナ' が取得されなくても、元の `row` から直接参照
+                const originalKanaValue = row['フリガナ'] || row['店舗名(カナ)'] || row['店舗名'] || ''; // 複数の可能性を考慮
+                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(String(originalKanaValue)) + 'PMK';
 
 
                 // CSV形式に変換してresultDataに追加

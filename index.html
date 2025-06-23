@@ -6,6 +6,8 @@
     <title>住所から緯度経度、最寄り駅を取得</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PapaParse CDN for CSV parsing (used for city codes data) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -89,6 +91,9 @@
             <p class="text-red-600 text-sm mt-2 font-bold">
                 注: 駅データのURLは、このHTMLコード内の `stationsDataUrl` 変数を、お客様がGitHubにアップロードしたGeoJSONファイルのRaw URLに置き換える必要があります。国土数値情報からダウンロードしたGeoJSONファイルを直接利用できますが、データ量が多い場合、読み込みに時間がかかることがあります。
             </p>
+            <p class="text-red-600 text-sm mt-2 font-bold">
+                注: 市区町村コードデータのURLは、このHTMLコード内の `cityCodesDataUrl` 変数を、お客様がGitHubにアップロードした`city-codes.csv`ファイルのRaw URLに置き換える必要があります。
+            </p>
         </div>
 
         <div class="mb-4">
@@ -152,6 +157,7 @@
         let headers = [];    // CSVヘッダーを保持
         let resultData = []; // 緯度経度と最寄り駅を追加した結果データを保持
         let stationsData = []; // 駅マスターデータを保持
+        let cityCodesData = []; // 市区町村コードマスターデータを保持
         let isProcessingCancelled = false; // 処理中断フラグ
 
         // --- 駅データのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
@@ -159,10 +165,15 @@
         // GitHubにアップロードした N02-20_Station.geojson の「Raw」ボタン（または三点リーダーメニューの「Raw file content」をクリックして開いた新しいタブのURL）を正確に貼り付けてください。
         const stationsDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/main/N02-20_Station.geojson'; 
 
+        // --- 市区町村コードデータのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
+        // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/city-codes.csv'
+        const cityCodesDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'; // ★ここを city-codes.csv のRaw URLに置き換えてください
+
         // --- 出力CSVファイルの最終的なヘッダー順とマッピング ---
         const OUTPUT_HEADERS = [
             '企業コード', '店舗コード', 'ロケール', '店舗名(漢字)', '店舗名(カナ)', '請求先コード1',
-            '請求先コード2', '使用不可フラグ', '郵便番号', 'L2コード', '国交省住所1', // 市区町村コードを削除
+            '請求先コード2', '使用不可フラグ', '郵便番号', 'L2コード', '市区町村コード', // ★市区町村コードを再追加
+            '国交省住所1', 
             '国交省住所2', '国交省住所補足', '住所1', '住所2', '住所3', '電話番号', 'FAX番号',
             '担当部門', '担当者役職', '担当者名', '担当者MAIL', '代表業態コード', '業態中分類コード',
             '旧業態コード', '旧業態中分類コード', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
@@ -177,38 +188,45 @@
         const INPUT_TO_OUTPUT_MAPPING = {
             '企業名': 'クライアント名', 
             '店舗名(漢字)': '店舗名',
-            '店舗名(カナ)': 'フリガナ', // 半角カタカナ変換＋PMK付加
+            '店舗名(カナ)': 'フリガナ', 
             '郵便番号': '郵便番号',
             '国交省住所1': '住所', // GSI APIのproperties.titleから取得
             '顧客側店舗コード': '顧客店番'
         };
 
 
-        // アプリ起動時にマスターデータ（駅データ）を読み込む
+        // アプリ起動時にマスターデータ（駅データ、市区町村コードデータ）を読み込む
         window.onload = async () => {
-            // stationsDataUrlが有効なURLであるかを確認
+            let stationsDataLoaded = false;
+            let cityCodesDataLoaded = false;
+
+            // 駅データ読み込み
             if (!stationsDataUrl.startsWith('http')) {
-                showMessage('警告: 駅データのURLが設定されていません。最寄り駅検索機能は利用できません。コード内の `stationsDataUrl` 変数をGitHubにアップロードしたGeoJSONファイルのRaw URLに置き換えてください。', 'error');
-                csvFileInput.disabled = false;
-                geocodeButton.disabled = true; // 駅データがないと最寄り駅検索ができないため無効化
-                return;
-            }
-
-            await loadStationsData(); // loadStationsData will set the message
-
-            // After loadStationsData, check if stationsData was successfully populated.
-            if (stationsData.length > 0) {
-                // If a success message wasn't explicitly set by loadStationsData, set a general one.
-                if (!messageText.textContent.includes('件を読み込みました')) { // Avoid overwriting specific success message
-                    showMessage('アプリが起動しました。CSVファイルをアップロードしてください。');
-                }
-                csvFileInput.disabled = false;
-                geocodeButton.disabled = false; 
+                showMessage('警告: 駅データのURLが設定されていません。最寄り駅検索機能は利用できません。', 'error');
             } else {
-                // loadStationsDataがエラーメッセージを設定しているはずなので、ここではボタンを無効化するだけ
-                csvFileInput.disabled = false; // CSVアップロードは可能にしておく
-                geocodeButton.disabled = true; 
+                await loadStationsData();
+                if (stationsData.length > 0) stationsDataLoaded = true;
             }
+
+            // 市区町村コードデータ読み込み
+            if (!cityCodesDataUrl.startsWith('http')) {
+                showMessage('警告: 市区町村コードデータのURLが設定されていません。市区町村コードの取得機能は利用できません。', 'error');
+            } else {
+                await loadCityCodesData();
+                if (cityCodesData.length > 0) cityCodesDataLoaded = true;
+            }
+            
+            // 全ての必須データが読み込まれたらボタンを有効化
+            if (stationsDataLoaded || cityCodesDataLoaded) { // どちらか片方でもロードされていればCSVアップロードは可能
+                showMessage('アプリが起動しました。CSVファイルをアップロードしてください。');
+                csvFileInput.disabled = false;
+                geocodeButton.disabled = false; // 処理開始ボタンを有効化
+            } else {
+                showMessage('必要なデータ（駅または市区町村コード）を読み込めませんでした。CSVのアップロードと処理はできません。', 'error');
+                csvFileInput.disabled = true;
+                geocodeButton.disabled = true;
+            }
+            
             cancelButton.classList.add('hidden'); // 初期状態ではキャンセルボタンは非表示
             downloadCsvButton.disabled = true; // 初期状態ではダウンロードボタンは無効
         };
@@ -253,11 +271,11 @@
                 try {
                     parseCsv(text);
                     showMessage('CSVファイルが読み込まれました。');
-                    // 駅データが読み込まれていればボタンを有効に
-                    if (stationsData.length > 0) {
+                    // 駅データまたは市区町村コードデータが読み込まれていればボタンを有効に
+                    if (stationsData.length > 0 || cityCodesData.length > 0) {
                          geocodeButton.disabled = false;
                     } else {
-                         showMessage('駅データが読み込まれていないため、最寄り駅検索はできません。', 'warning');
+                         showMessage('必要なデータ（駅または市区町村コード）が読み込まれていないため、処理できません。', 'warning');
                          geocodeButton.disabled = true;
                     }
                     downloadCsvButton.disabled = true; // 新しいファイルを読み込んだらダウンロードボタンを無効化
@@ -292,8 +310,8 @@
             downloadCsvButton.disabled = true;
             cancelButton.classList.add('hidden'); // キャンセルボタンも非表示に
             progressBarContainer.classList.add('hidden'); // プログレスバーを隠す
-            // 駅データが読み込まれている場合はジオコーディングボタンを再度有効にする
-            if (stationsData.length > 0) {
+            // 必須データが読み込まれている場合はジオコーディングボタンを再度有効にする
+            if (stationsData.length > 0 || cityCodesData.length > 0) {
                 geocodeButton.disabled = false;
                 showMessage('ファイルの選択がクリアされました。新しいCSVファイルをアップロードしてください。');
             }
@@ -389,7 +407,6 @@
 
 
         // 都道府県名と市区町村名のみを抽出するヘルパー関数
-        // (この関数は市区町村コード検索の名残ですが、最寄り駅検索では直接使用されません)
         function getPrefCityWardForLookup(fullAddress) {
             let pref = '';
             let cityWard = '';
@@ -403,7 +420,6 @@
 
                 // 市区町村を検出 (市, 区, 町, 村 で終わる)
                 // より多くのパターンをカバーするため、区、郡、町、村を考慮
-                // 例: 横浜市中区, 〇〇郡〇〇町
                 const cityWardRegex = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/; 
                 const cityWardMatch = remainingAddress.match(cityWardRegex);
 
@@ -412,6 +428,35 @@
                 }
             }
             return { pref, city: cityWard };
+        }
+
+        // 市区町村コードを取得する関数
+        function getCityCode(address) {
+            if (cityCodesData.length === 0) {
+                console.warn('市区町村コードデータが読み込まれていません。');
+                return 'データなし';
+            }
+            const { pref, city } = getPrefCityWardForLookup(address);
+            if (!pref || !city) {
+                console.warn(`住所から都道府県または市区町村を特定できませんでした: "${address}"`);
+                return '不明';
+            }
+
+            // 市区町村データからコードを検索
+            // 完全一致または市区町村が指定された市区町村で始まる場合を検索
+            const found = cityCodesData.find(item => 
+                item['都道府県'] === pref && (item['市区町村'] === city || city.startsWith(item['市区町村']))
+            );
+
+            if (found && found['市区町村コード']) {
+                // ★市区町村コードを5桁にゼロ埋め
+                const paddedCode = String(found['市区町村コード']).padStart(5, '0');
+                console.log(`住所 "${address}" -> 検出都道府県: "${pref}", 市区町村: "${city}", コード: "${paddedCode}"`);
+                return paddedCode;
+            } else {
+                console.warn(`住所 "${address}" (都道府県: "${pref}", 市区町村: "${city}") に対応する市区町村コードが見つかりません。`);
+                return '不明';
+            }
         }
 
 
@@ -512,7 +557,7 @@
 
                     if (stationsData.length > 0) {
                         console.log(`駅データ ${stationsData.length} 件の読み込みとフィルタリングが完了しました。`);
-                        showMessage(`駅データ ${stationsData.length} 件を読み込みました。`, 'success'); 
+                        // showMessage(`駅データ ${stationsData.length} 件を読み込みました。`, 'success'); // 複数データ読み込みのメッセージはonloadで一括
                     } else {
                         // 全てのfeaturesがフィルタリングで除外された場合
                         showMessage('GeoJSONファイルには有効な駅データが含まれていませんでした。緯度経度情報が正しいか、サポートされているgeometryタイプか確認してください。', 'error');
@@ -529,6 +574,29 @@
                 stationsData = [];
             }
         }
+
+        // 市区町村コードデータを外部から読み込む関数 (CSV対応)
+        async function loadCityCodesData() {
+            showMessage('市区町村コードデータを読み込み中...', 'info');
+            try {
+                const response = await fetch(cityCodesDataUrl);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Fetch response not OK for city codes:', response.status, response.statusText, 'Body:', errorText);
+                    throw new Error(`市区町村コードデータ読み込みエラー: ${response.status} ${response.statusText}. URLまたはネットワーク接続を確認してください。`);
+                }
+                const csvText = await response.text();
+                // PapaParseを使用してCSVをパース
+                cityCodesData = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data; 
+                console.log('市区町村コードデータ読み込み完了:', cityCodesData.length, '件');
+                // showMessage(`市区町村コードデータ ${cityCodesData.length} 件を読み込みました。`, 'success'); // 複数データ読み込みのメッセージはonloadで一括
+            } catch (error) {
+                console.error('市区町村コードデータ読み込み中にエラー:', error);
+                showMessage(`市区町村コードデータを読み込めませんでした: ${error.message} URLまたはネットワーク接続を確認してください。`, 'error');
+                cityCodesData = [];
+            }
+        }
+
 
         /**
          * ハバーサインの公式を使って2点間の距離をキロメートルで計算する関数
@@ -566,11 +634,6 @@
             if (!headers.some(h => h === addressColumnName)) {
                 showMessage(`指定された列名 "${addressColumnName}" がCSVヘッダーに見つかりません。`, 'error');
                 return;
-            }
-
-            if (stationsData.length === 0) {
-                 showMessage('警告: 駅データが読み込まれていないため、最寄り駅と距離は取得できません。CSVに緯度経度のみを追加します。', 'warning');
-                 // 処理は続行可能なのでreturnしない
             }
 
             // UIの状態を更新（処理中）
@@ -636,6 +699,14 @@
                     nearestStationDistanceValue = '住所不明';
                 }
 
+                // --- 市区町村コードの取得 ---
+                let cityCodeValue = '';
+                if (cityCodesData.length > 0) {
+                    cityCodeValue = getCityCode(normalizedAddress);
+                } else {
+                    cityCodeValue = 'データなし';
+                }
+
 
                 // --- 新しい出力行のデータを構築 ---
                 const outputRowValues = {};
@@ -652,13 +723,14 @@
                 outputRowValues['店舗名(漢字)'] = row['店舗名'] || ''; // 入力CSVの「店舗名」を出力CSVの「店舗名(漢字)」に
                 
                 const furigana = row['フリガナ'] || ''; // 入力CSVの「フリガナ」を出力CSVの「店舗名(カナ)」に
-                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(furigana) + 'PMK'; 
-                
+                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(furigana) + 'PMK'; // ★PMKを再付加
+
                 outputRowValues['請求先コード1'] = row['請求先コード1'] || '';
                 outputRowValues['請求先コード2'] = row['請求先コード2'] || '';
                 outputRowValues['使用不可フラグ'] = row['使用不可フラグ'] || '';
                 outputRowValues['郵便番号'] = row['郵便番号'] || '';
                 outputRowValues['L2コード'] = row['L2コード'] || '';
+                outputRowValues['市区町村コード'] = cityCodeValue; // ★市区町村コードを追加
                 outputRowValues['国交省住所1'] = gsiAddressTitle; // 国交省APIから取得した整形済み住所
                 outputRowValues['国交省住所2'] = row['国交省住所2'] || '';
                 outputRowValues['国交省住所補足'] = row['国交省住所補足'] || '';

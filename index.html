@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.0.4"; // ここでバージョンを管理
+        const APP_VERSION = "v1.0.5"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -518,19 +518,18 @@
             const baseUrl = 'https://zipcloud.ibsnet.co.jp/api/search';
             let postalCode = '';
 
-            // Attempt 1: Try with cleaned town (address3)
-            // 番地、号、丁目、ハイフン結合の数字などを除去し、純粋な町名に近づける
-            let cleanedTownForAPI = town.replace(/(\d+丁目)|(\d+番地)|(\d+号)|(\d+[-ー]\d+)/g, '').trim();
+            // Attempt 1: Try with refined town (address3) - keep 丁目, remove digits/banchi/gou
+            let refinedTownForAPI = town.replace(/(\d+番地)|(\d+号)|(\d+[-ー]\d+)/g, '').trim();
             // 括弧内の情報も除去 (例: (その他) など)
-            cleanedTownForAPI = cleanedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
+            refinedTownForAPI = refinedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
             
-            console.log(`郵便番号検索API (Attempt 1): Pref: "${pref}", City: "${city}", Town for API: "${cleanedTownForAPI}"`);
+            console.log(`郵便番号検索API (Attempt 1): Pref: "${pref}", City: "${city}", Refined Town for API: "${refinedTownForAPI}"`);
             try {
                 const queryParams1 = new URLSearchParams();
                 queryParams1.append('address1', pref);
                 queryParams1.append('address2', city);
-                if (cleanedTownForAPI) {
-                    queryParams1.append('address3', cleanedTownForAPI);
+                if (refinedTownForAPI) {
+                    queryParams1.append('address3', refinedTownForAPI);
                 }
                 const apiUrl1 = `${baseUrl}?${queryParams1.toString()}`;
                 const response1 = await fetch(apiUrl1);
@@ -542,7 +541,7 @@
                     console.log(`郵便番号検索API (Attempt 1): Found postal code: ${postalCode}`);
                     return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (cleaned: "${cleanedTownForAPI}"). Retrying without town...`);
+                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (refined: "${refinedTownForAPI}"). Retrying without town...`);
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 1) calling error:`, error);
@@ -601,17 +600,13 @@
             }
 
             // 残りの住所から町域（town）を抽出する
-            // 郵便番号検索API向けに、町名のみを抽出する（番地や号は除外）
-            // 例: "西二十三番町29番20号" -> "西二十三番町"
-            // 例: "丸の内1丁目1番地1号" -> "丸の内" (丁目もAPI向けには除去)
-            // 数字や「番地」「号」「丁目」などの前で区切る
-            const townMatch = remainingAddress.match(/^(.+?)(?=\d+[番丁号]?|$)/); 
+            // 数字や「番地」「号」などの前で区切る
+            const townMatch = remainingAddress.match(/^(.+?)(?=\d+[番号]|\d+[-ー]|$)/); 
             if (townMatch && townMatch[1]) {
                 town = townMatch[1].trim();
                 // さらに、不要な括弧内の情報などを削除してクリーンにする
                 town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
-                // 町名に「丁目」が含まれる場合も、APIによっては不要な場合があるため除去を試みる
-                town = town.replace(/(\d+丁(?:目)?)$/, '').trim(); // 例: "丸の内1丁目" -> "丸の内"
+                // ここでは丁目を除去しない（API呼び出し側で調整するため）
             } else {
                 town = remainingAddress.trim(); // 数字部分がない場合は全体を町域とする
                 town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();

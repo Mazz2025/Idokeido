@@ -178,7 +178,7 @@
             '国交省住所1', 
             '国交省住所2', '国交省住所補足', '住所1', '住所2', '住所3', '電話番号', 'FAX番号',
             '担当部門', '担当者役職', '担当者名', '担当者MAIL', '代表業態コード', '業態中分類コード',
-            '旧業態コード', '旧業態中分類コード', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
+            '旧業態コード', '旧業態コード中分類', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
             '鉄道最寄駅', '最寄り駅距離(km)', // 最寄り駅と距離を追加
             'バス最寄駅', '添付ファイルコード', 'ファイル名', 'ファイルアップロード日',
             'SEJDO名', '免許品', '実績年月日1', '実績作業量1', '実績年月日2', '実績作業量2',
@@ -435,7 +435,7 @@
         // 市区町村コードを取得する関数
         function getCityCode(address) {
             if (cityCodesData.length === 0) {
-                console.warn('市区町村コードデータが読み込まれていません。');
+                console.warn('市区町村コードデータが読み込まれていません。市区町村コードの取得機能は利用できません。');
                 return 'データなし';
             }
             const { pref, city } = getPrefCityWardForLookup(address);
@@ -444,15 +444,22 @@
                 return '不明';
             }
 
-            // 市区町村データからコードを検索
-            // ★CSVのヘッダー名 'pref', 'city', 'code' に合わせて修正
-            const found = cityCodesData.find(item => 
-                item['pref'] === pref && (item['city'] === city || city.startsWith(item['city']))
-            );
+            console.log(`getCityCode: Searching for Pref: "${pref}", City: "${city}"`); // デバッグログ追加
 
-            if (found && found['code']) { // ★'市区町村コード' を 'code' に修正
-                // ★市区町村コードを5桁にゼロ埋め
-                const paddedCode = String(found['code']).padStart(5, '0'); // ★'市区町村コード' を 'code' に修正
+            // 市区町村データからコードを検索
+            // CSVのヘッダー名 'pref', 'city', 'code' に合わせて修正
+            const found = cityCodesData.find(item => {
+                // デバッグログ追加：各アイテムとの比較状況
+                console.log(`getCityCode: Comparing with master data entry: Pref: "${item['pref']}", City: "${item['city']}", Code: "${item['code']}"`);
+                const prefMatch = item['pref'] === pref;
+                const cityMatch = (item['city'] === city || (item['city'] && city.startsWith(item['city']))); // item['city']がundefined/nullでないかチェック
+                console.log(`getCityCode: Match condition results - Pref Match: ${prefMatch}, City Match: ${cityMatch}`);
+                return prefMatch && cityMatch;
+            });
+
+            if (found && found['code']) { 
+                // 市区町村コードを5桁にゼロ埋め
+                const paddedCode = String(found['code']).padStart(5, '0'); 
                 console.log(`住所 "${address}" -> 検出都道府県: "${pref}", 市区町村: "${city}", コード: "${paddedCode}"`);
                 return paddedCode;
             } else {
@@ -591,7 +598,12 @@
                 // PapaParseを使用してCSVをパース
                 cityCodesData = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data; 
                 console.log('市区町村コードデータ読み込み完了:', cityCodesData.length, '件');
-                // showMessage(`市区町村コードデータ ${cityCodesData.length} 件を読み込みました。`, 'success'); // 複数データ読み込みのメッセージはonloadで一括
+                if (cityCodesData.length > 0) {
+                    // showMessage(`市区町村コードデータ ${cityCodesData.length} 件を読み込みました。`, 'success'); // 複数データ読み込みのメッセージはonloadで一括
+                } else {
+                    showMessage('市区町村コードデータは読み込まれましたが、有効なデータが含まれていませんでした。CSVファイルの内容を確認してください。', 'error');
+                }
+
             } catch (error) {
                 console.error('市区町村コードデータ読み込み中にエラー:', error);
                 showMessage(`市区町村コードデータを読み込めませんでした: ${error.message} URLまたはネットワーク接続を確認してください。`, 'error');
@@ -725,14 +737,14 @@
                 outputRowValues['店舗名(漢字)'] = row['店舗名'] || ''; // 入力CSVの「店舗名」を出力CSVの「店舗名(漢字)」に
                 
                 const furigana = row['フリガナ'] || ''; // 入力CSVの「フリガナ」を出力CSVの「店舗名(カナ)」に
-                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(furigana) + 'PMK'; // ★PMKを再付加
+                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(furigana) + 'PMK'; // PMKを再付加
 
                 outputRowValues['請求先コード1'] = row['請求先コード1'] || '';
                 outputRowValues['請求先コード2'] = row['請求先コード2'] || '';
                 outputRowValues['使用不可フラグ'] = row['使用不可フラグ'] || '';
                 outputRowValues['郵便番号'] = row['郵便番号'] || '';
                 outputRowValues['L2コード'] = row['L2コード'] || '';
-                outputRowValues['市区町村コード'] = cityCodeValue; // ★市区町村コードを追加
+                outputRowValues['市区町村コード'] = cityCodeValue; // 市区町村コードを追加
                 outputRowValues['国交省住所1'] = gsiAddressTitle; // 国交省APIから取得した整形済み住所
                 outputRowValues['国交省住所2'] = row['国交省住所2'] || '';
                 outputRowValues['国交省住所補足'] = row['国交省住所補足'] || '';

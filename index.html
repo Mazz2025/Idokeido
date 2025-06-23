@@ -202,7 +202,7 @@
             '企業名': 'クライアント名', 
             '店舗名(漢字)': '店舗名',
             '店舗名(カナ)': 'フリガナ', 
-            '郵便番号': '郵便番号', // This will be overwritten by extracted postal code
+            // '郵便番号': '郵便番号', // 住所から抽出するため、このマッピングは不要
             '国交省住所1': '住所', // GSI APIから取得
             '顧客側店舗コード': '顧客店番'
         };
@@ -423,27 +423,22 @@
          */
         function toHalfWidthKatakana(str) {
             if (!str) return '';
-            let tempStr = str;
+            let tempStr = String(str); // Ensure it's a string
 
-            // 半角カタカナに変換するためのマッピングテーブル
-            const kanaMap = {
-                'が': 'ｶﾞ', 'ぎ': 'ｷﾞ', 'ぐ': 'ｸﾞ', 'げ': 'ｹﾞ', 'ご': 'ｺﾞ',
-                'ざ': 'ｻﾞ', 'じ': 'ｼﾞ', 'ず': 'ｽﾞ', 'ぜ': 'ｾﾞ', 'ぞ': 'ｿﾞ',
-                'だ': 'ﾀﾞ', 'ぢ': 'ﾁﾞ', 'づ': 'ﾂﾞ', 'で': 'ﾃﾞ', 'ど': 'ﾄﾞ',
-                'ば': 'ﾊﾞ', 'び': 'ﾋﾞ', 'ぶ': 'ﾌﾞ', 'べ': 'ﾍﾞ', 'ぼ': 'ﾎﾞ',
-                'ぱ': 'ﾊﾟ', 'ぴ': 'ﾋﾟ', 'ぷ': 'ﾌﾟ', 'ぺ': 'ﾍﾟ', 'ぽ': 'ﾎﾟ',
-                'あ': 'ｱ', 'い': 'ｲ', 'う': 'ｳ', 'え': 'ｴ', 'お': 'ｵ',
-                'か': 'ｶ', 'き': 'ｷ', 'ｸ': 'ｸ', 'け': 'ｹ', 'こ': 'ｺ',
-                'さ': 'ｻ', 'し': 'ｼ', 'す': 'ｽ', 'せ': 'ｾ', 'そ': 'ｿ',
-                'た': 'ﾀ', 'ち': 'ﾁ', 'つ': 'ﾂ', 'て': 'ﾃ', 'と': 'ﾄ',
-                'な': 'ﾅ', 'に': 'ﾆ', 'ぬ': 'ﾇ', 'ね': 'ﾈ', 'の': 'ﾉ',
-                'は': 'ﾊ', 'ひ': 'ﾋ', 'ふ': 'ﾌ', 'へ': 'ﾍ', 'ほ': 'ﾎ',
-                'ま': 'ﾏ', 'み': 'ﾐ', 'む': 'ﾑ', 'め': 'ﾒ', 'も': 'ﾓ',
-                'や': 'ﾔ', 'ゆ': 'ﾕ', 'よ': 'ﾖ',
-                'ら': 'ﾗ', 'り': 'ﾘ', 'る': 'ﾙ', 'れ': 'ﾚ', 'ろ': 'ﾛ',
-                'わ': 'ﾜ', 'を': 'ｦ', 'ん': 'ﾝ',
-                'ぁ': 'ｧ', 'ぃ': 'ｨ', 'ぅ': 'ｩ', 'ぇ': 'ｪ', 'ぉ': 'ｫ',
-                'ゃ': 'ｬ', 'ゅ': 'ｭ', 'ょ': 'ｮ', 'っ': 'ｯ',
+            // 全角ひらがなを全角カタカナに変換
+            tempStr = tempStr.replace(/[\u3040-\u309F]/g, function(s) {
+                return String.fromCharCode(s.charCodeAt(0) + 0x60);
+            });
+
+            // 全角カタカナを半角カタカナに変換
+            const halfWidthMap = {
+                'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
+                'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
+                'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
+                'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
+                'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
+                'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
+                'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ', 'ッ': 'ｯ', 'ー': 'ｰ',
                 'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
                 'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
                 'サ': 'ｻ', 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ',
@@ -454,32 +449,31 @@
                 'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
                 'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
                 'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
-                'ッ': 'ｯ', 'ー': 'ｰ', // 小文字と長音符
-                'ヰ': 'ｲ', 'ヱ': 'ｴ', 'ヵ': 'ｶ', 'ヶ': 'ｹ',
-                'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
-                'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
-                'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
-                'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
-                'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
-                'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
-                'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ'
+                // その他の特殊な文字や濁点・半濁点付き文字の個別対応
+                'ヴ': 'ｳﾞ', 'ヵ': 'ｶ', 'ヶ': 'ｹ',
+                'ヷ': 'ﾜﾞ', 'ヸ': 'ｲﾞ', 'ヹ': 'ｴﾞ', 'ヺ': 'ｦﾞ' // 歴史的仮名遣いの濁点
             };
 
             let converted = '';
             for (let i = 0; i < tempStr.length; i++) {
                 let char = tempStr[i];
-                // 濁点・半濁点付き文字の処理（結合文字）
-                if (i + 1 < tempStr.length && (tempStr[i+1] === 'ﾞ' || tempStr[i+1] === 'ﾟ')) {
-                    const combinedChar = char + tempStr[i+1];
-                    if (kanaMap[combinedChar]) {
-                        converted += kanaMap[combinedChar];
-                        i++; // 次の文字（濁点/半濁点）をスキップ
-                        continue;
+                // 結合文字（濁点・半濁点）の処理を優先
+                if (i + 1 < tempStr.length) {
+                    const nextChar = tempStr[i+1];
+                    // 全角濁点・半濁点付き文字（例: カﾞ -> ガ）
+                    if (char.match(/[\u30A1-\u30FA]/) && (nextChar === 'ﾞ' || nextChar === 'ﾟ')) {
+                        const combinedChar = char + nextChar;
+                        // マッピングテーブルに直接結合文字があるかチェック
+                        if (halfWidthMap[combinedChar]) {
+                            converted += halfWidthMap[combinedChar];
+                            i++; // 次の文字（濁点/半濁点）をスキップ
+                            continue;
+                        }
                     }
                 }
                 // 通常の文字変換
-                if (kanaMap[char]) {
-                    converted += kanaMap[char];
+                if (halfWidthMap[char]) {
+                    converted += halfWidthMap[char];
                 } else {
                     converted += char; // 変換できない文字はそのまま
                 }
@@ -494,11 +488,13 @@
          * @returns {string} 抽出された7桁の郵便番号（ハイフンなし、ゼロ埋め）または空文字列。
          */
         function getPostalCodeFromAddress(address) {
+            if (!address) return '';
+
             // 全角数字と全角ハイフンを半角に変換
             let normalizedAddress = address.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             normalizedAddress = normalizedAddress.replace(/ー/g, '-');
 
-            // 7桁の数字またはXXX-XXXX形式の郵便番号を検索
+            // 7桁の数字（ハイフンあり/なし）の郵便番号を検索
             const postcodeMatch = normalizedAddress.match(/(\d{3}[-]?\d{4})/);
             if (postcodeMatch && postcodeMatch[1]) {
                 const postalCode = postcodeMatch[1].replace(/-/g, ''); // ハイフンを除去
@@ -790,7 +786,6 @@
                 
                 // --- 最寄り駅の検索 ---
                 let nearestStationNameValue = '';
-                // let nearestStationDistanceValue = ''; // 最寄り駅距離を削除
 
                 // 緯度経度が有効な数値で、かつ駅データが読み込まれている場合にのみ最寄り駅を検索
                 if (stationsData.length > 0 && typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
@@ -809,14 +804,11 @@
                     }
                     if (nearestStation) {
                         nearestStationNameValue = nearestStation.station_name;
-                        // nearestStationDistanceValue = minDistance.toFixed(2); // 小数点以下2桁に丸める - 最寄り駅距離を削除
                     }
                 } else if (stationsData.length === 0) {
                     nearestStationNameValue = '駅データなし';
-                    // nearestStationDistanceValue = '駅データなし'; // 最寄り駅距離を削除
                 } else {
                     nearestStationNameValue = '住所不明';
-                    // nearestStationDistanceValue = '住所不明'; // 最寄り駅距離を削除
                 }
 
                 // --- 市区町村コードの取得 ---
@@ -828,7 +820,8 @@
                 }
 
                 // --- 郵便番号の取得 ---
-                let postalCodeValue = getPostalCodeFromAddress(inputAddress); // 元の住所から取得
+                // inputAddressから郵便番号を抽出
+                let postalCodeValue = getPostalCodeFromAddress(inputAddress);
 
                 // --- 新しい出力行のデータを構築 ---
                 const outputRowValues = {};
@@ -838,38 +831,13 @@
                     outputRowValues[header] = '';
                 });
 
-                // 2. Populate values based on OUTPUT_HEADERS.
-                //    This loop ensures all OUTPUT_HEADERS are filled,
-                //    either from input CSV (direct match or specific mapping) or remaining empty.
+                // 2. Populate values based on INPUT_TO_OUTPUT_MAPPING or direct header match
                 for (const outputHeader of OUTPUT_HEADERS) {
-                    let sourceInputHeader = outputHeader; // Assume direct match by default
-
-                    // Check for specific input-to-output header re-mappings.
-                    // These rules define which input column's data should go into a specific output column.
-                    if (outputHeader === '店舗名(漢字)') {
-                        sourceInputHeader = '店舗名'; // Output '店舗名(漢字)' comes from input '店舗名'
-                    } else if (outputHeader === '店舗名(カナ)') {
-                        sourceInputHeader = 'フリガナ'; // Output '店舗名(カナ)' comes from input 'フリガナ'
-                    } else if (outputHeader === '顧客側店舗コード') {
-                        sourceInputHeader = '顧客店番'; // Output '顧客側店舗コード' comes from input '顧客店番'
-                    }
-                    // Add more explicit re-mappings here if needed.
-                    // Example: if output 'CustomField' should come from input 'UserField':
-                    // else if (outputHeader === 'CustomField') { sourceInputHeader = 'UserField'; }
-
-
-                    // If the determined sourceInputHeader exists in the input CSV, copy its value.
-                    // This handles both direct matches (e.g., input '企業コード' -> output '企業コード')
-                    // and explicit re-mappings (e.g., input '店舗名' -> output '店舗名(漢字)').
-                    if (headers.includes(sourceInputHeader)) {
-                        outputRowValues[outputHeader] = row[sourceInputHeader] || '';
-                    }
-
-                    // Apply specific transformations immediately after getting the raw value.
-                    // These transformations always apply to the data intended for this specific outputHeader.
-                    if (outputHeader === '店舗名(カナ)') {
-                        // 全角ひらがな・カタカナを半角カタカナに変換し、'PMK'を付加
-                        outputRowValues[outputHeader] = toHalfWidthKatakana(String(outputRowValues[outputHeader])) + 'PMK';
+                    const mappedInputHeader = INPUT_TO_OUTPUT_MAPPING[outputHeader];
+                    if (mappedInputHeader && headers.includes(mappedInputHeader)) {
+                        outputRowValues[outputHeader] = row[mappedInputHeader] || '';
+                    } else if (headers.includes(outputHeader)) { // 直接ヘッダー名が一致する場合
+                        outputRowValues[outputHeader] = row[outputHeader] || '';
                     }
                 }
 
@@ -882,8 +850,15 @@
                 outputRowValues['市区町村コード'] = cityCodeValue;
                 outputRowValues['郵便番号'] = postalCodeValue; // 住所から抽出した郵便番号を適用
 
-                // 'バス最寄駅'などの他の項目は、もし入力CSVに同名のヘッダーが存在すれば、
-                // 上記のステップ2で自動的にコピーされています。
+                // 店舗名(カナ)の変換はここで強制的に行う
+                if (outputRowValues['店舗名(カナ)']) { // 値が存在する場合のみ変換
+                     outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(String(outputRowValues['店舗名(カナ)'])) + 'PMK';
+                } else if (headers.includes('店舗名(漢字)')) { // フリガナ列がない場合、店舗名(漢字)から変換を試みる
+                     outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(String(row['店舗名(漢字)'] || '')) + 'PMK';
+                } else {
+                     outputRowValues['店舗名(カナ)'] = 'PMK'; // デフォルト値、または空の場合
+                }
+
 
                 // CSV形式に変換してresultDataに追加
                 const csvRow = OUTPUT_HEADERS.map(header => {

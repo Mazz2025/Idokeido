@@ -362,25 +362,30 @@
         function normalizeAddressHyphens(address) {
             let normalizedAddress = address;
 
-            // 「数字-数字-数字」または「数字-数字」を「丁目」「番」「号」に変換
-            // 例: 1-2-3 -> 1丁目2番3号, 1-2 -> 1丁目2番
-            // 丁目、番、号の前に既に漢数字がある場合は変換しないようにする
-            normalizedAddress = normalizedAddress.replace(/(\d+)[-ー](\d+)(?:[-ー](\d+))?(?![丁番号])/g, (match, p1, p2, p3) => {
-                let result = '';
-                // 1つ目の数字は「丁目」
-                result += p1 + '丁目';
-                // 2つ目の数字は「番」
-                result += p2 + '番';
-                // 3つ目の数字があれば「号」
+            // Pattern 1: X丁目Y-Z -> X丁目Y番Z号 (例: '西葛西3丁目15-12' -> '西葛西3丁目15番12号')
+            // '丁目'の後に続く数字-ハイフン-数字のパターンを特定し、'番'と'号'を追加
+            normalizedAddress = normalizedAddress.replace(/(\d+丁目)(\d+)[-ー](\d+)(?![番号])/g, '$1$2番$3号');
+
+            // Pattern 2: 数字-数字-数字 を X丁目Y番Z号 に、または 数字-数字 を X番Y号 に変換 (一般的なケース)
+            // '丁目'や'番'、'号'が直前にない数値のハイフン連結パターンに適用
+            // 例: '〇〇町1-2-3' -> '〇〇町1丁目2番3号'
+            // 例: '〇〇町1-2' -> '〇〇町1番2号'
+            // このパターンは、既に'丁目'の後に変換された部分を再処理しないように注意しています。
+            normalizedAddress = normalizedAddress.replace(/(^|[^丁番号\d])(\d+)[-ー](\d+)(?:[-ー](\d+))?(?![丁番号])/g, (match, prefix, p1, p2, p3) => {
+                let result = prefix; // マッチしたプレフィックス（空文字列または非数字文字）を保持
                 if (p3) {
-                    result += p3 + '号';
+                    result += p1 + '丁目' + p2 + '番' + p3 + '号';
+                } else {
+                    // ここでp1に'丁目'が付加されてしまう問題があったため、単純に'番'と'号'を付加する
+                    result += p1 + '番' + p2 + '号';
                 }
                 return result;
             });
-            
-            // 「1番2」のような「号」がない場合
+
+            // Pattern 3: X番Y -> X番Y号 (例: "1番2" -> "1番2号")
             normalizedAddress = normalizedAddress.replace(/(\d+番)(\d+)(?![号])/g, '$1$2号');
-            // 「1丁目2番3」のような「号」がない場合
+
+            // Pattern 4: X丁目Y番Z -> X丁目Y番Z号 (例: "1丁目2番3" -> "1丁目2番3号")
             normalizedAddress = normalizedAddress.replace(/(\d+丁(?:目)?\d+番)(\d+)(?![号])/g, '$1$2号');
 
             return normalizedAddress;
@@ -447,15 +452,17 @@
             console.log(`getCityCode: Searching for Pref: "${pref}", City: "${city}"`); // デバッグログ追加
 
             // 市区町村データからコードを検索
-            // CSVのヘッダー名 'pref', 'city', 'code' に合わせて修正
             const found = cityCodesData.find(item => {
-                // デバッグログ追加：各アイテムとの比較状況
-                console.log(`getCityCode: Comparing with master data entry: Pref: "${item['pref']}", City: "${item['city']}", Code: "${item['code']}"`);
-                const prefMatch = item['pref'] === pref;
-                const cityMatch = (item['city'] === city || (item['city'] && city.startsWith(item['city']))); // item['city']がundefined/nullでないかチェック
+                const itemPref = String(item['pref'] || '').trim(); // item['pref']がundefined/nullの場合も考慮してtrim
+                const itemCity = String(item['city'] || '').trim(); // item['city']がundefined/nullの場合も考慮してtrim
+                
+                console.log(`getCityCode: Comparing with master data entry: Pref: "${itemPref}", City: "${itemCity}", Code: "${item['code']}"`);
+                const prefMatch = itemPref === pref;
+                const cityMatch = (itemCity === city || (itemCity && city.startsWith(itemCity))); // itemCityが空でない場合のみstartsWithを適用
                 console.log(`getCityCode: Match condition results - Pref Match: ${prefMatch}, City Match: ${cityMatch}`);
                 return prefMatch && cityMatch;
             });
+            console.log(`getCityCode: Found item from master data:`, found); // 見つかったアイテムをログ出力
 
             if (found && found['code']) { 
                 // 市区町村コードを5桁にゼロ埋め

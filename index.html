@@ -203,7 +203,7 @@
             '店舗名(漢字)': '店舗名',
             '店舗名(カナ)': 'フリガナ', 
             '郵便番号': '郵便番号', // This will be overwritten by extracted postal code
-            '国交省住所1': '住所', // GSI APIのproperties.titleから取得
+            '国交省住所1': '住所', // GSI APIから取得
             '顧客側店舗コード': '顧客店番'
         };
 
@@ -425,25 +425,68 @@
             if (!str) return '';
             let tempStr = str;
 
-            // Step 1: Convert full-width Hiragana to full-width Katakana
-            tempStr = tempStr.replace(/[\u3041-\u3096]/g, function(match) {
-                return String.fromCharCode(match.charCodeAt(0) + 0x60);
-            });
+            // 半角カタカナに変換するためのマッピングテーブル
+            const kanaMap = {
+                'が': 'ｶﾞ', 'ぎ': 'ｷﾞ', 'ぐ': 'ｸﾞ', 'げ': 'ｹﾞ', 'ご': 'ｺﾞ',
+                'ざ': 'ｻﾞ', 'じ': 'ｼﾞ', 'ず': 'ｽﾞ', 'ぜ': 'ｾﾞ', 'ぞ': 'ｿﾞ',
+                'だ': 'ﾀﾞ', 'ぢ': 'ﾁﾞ', 'づ': 'ﾂﾞ', 'で': 'ﾃﾞ', 'ど': 'ﾄﾞ',
+                'ば': 'ﾊﾞ', 'び': 'ﾋﾞ', 'ぶ': 'ﾌﾞ', 'べ': 'ﾍﾞ', 'ぼ': 'ﾎﾞ',
+                'ぱ': 'ﾊﾟ', 'ぴ': 'ﾋﾟ', 'ぷ': 'ﾌﾟ', 'ぺ': 'ﾍﾟ', 'ぽ': 'ﾎﾟ',
+                'あ': 'ｱ', 'い': 'ｲ', 'う': 'ｳ', 'え': 'ｴ', 'お': 'ｵ',
+                'か': 'ｶ', 'き': 'ｷ', 'ｸ': 'ｸ', 'け': 'ｹ', 'こ': 'ｺ',
+                'さ': 'ｻ', 'し': 'ｼ', 'す': 'ｽ', 'せ': 'ｾ', 'そ': 'ｿ',
+                'た': 'ﾀ', 'ち': 'ﾁ', 'つ': 'ﾂ', 'て': 'ﾃ', 'と': 'ﾄ',
+                'な': 'ﾅ', 'に': 'ﾆ', 'ぬ': 'ﾇ', 'ね': 'ﾈ', 'の': 'ﾉ',
+                'は': 'ﾊ', 'ひ': 'ﾋ', 'ふ': 'ﾌ', 'へ': 'ﾍ', 'ほ': 'ﾎ',
+                'ま': 'ﾏ', 'み': 'ﾐ', 'む': 'ﾑ', 'め': 'ﾒ', 'も': 'ﾓ',
+                'や': 'ﾔ', 'ゆ': 'ﾕ', 'よ': 'ﾖ',
+                'ら': 'ﾗ', 'り': 'ﾘ', 'る': 'ﾙ', 'れ': 'ﾚ', 'ろ': 'ﾛ',
+                'わ': 'ﾜ', 'を': 'ｦ', 'ん': 'ﾝ',
+                'ぁ': 'ｧ', 'ぃ': 'ｨ', 'ぅ': 'ｩ', 'ぇ': 'ｪ', 'ぉ': 'ｫ',
+                'ゃ': 'ｬ', 'ゅ': 'ｭ', 'ょ': 'ｮ', 'っ': 'ｯ',
+                'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
+                'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
+                'サ': 'ｻ', 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ',
+                'タ': 'ﾀ', 'チ': 'ﾁ', 'ツ': 'ﾂ', 'テ': 'ﾃ', 'ト': 'ﾄ',
+                'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
+                'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
+                'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
+                'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
+                'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
+                'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
+                'ッ': 'ｯ', 'ー': 'ｰ', // 小文字と長音符
+                'ヰ': 'ｲ', 'ヱ': 'ｴ', 'ヵ': 'ｶ', 'ヶ': 'ｹ',
+                'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
+                'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
+                'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
+                'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
+                'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
+                'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
+                'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ'
+            };
 
-            // Step 2: Convert full-width Katakana to half-width Katakana
-            return tempStr.replace(/[\u30a1-\u30f6]/g, function(match) {
-                var chr = match.charCodeAt(0) - 0x60;
-                return String.fromCharCode(chr);
-            }).replace(/ヴ/g, 'ｳﾞ') // ヴ
-              .replace(/ガ/g, 'ｶﾞ').replace(/ギ/g, 'ｷﾞ').replace(/グ/g, 'ｸﾞ').replace(/ゲ/g, 'ｹﾞ').replace(/ゴ/g, 'ｺﾞ')
-              .replace(/ザ/g, 'ｻﾞ').replace(/ジ/g, 'ｼﾞ').replace(/ズ/g, 'ｽﾞ').replace(/ゼ/g, 'ｾﾞ').replace(/ゾ/g, 'ｿﾞ')
-              .replace(/ダ/g, 'ﾀﾞ').replace(/ヂ/g, 'ﾁﾞ').replace(/ヅ/g, 'ﾂﾞ').replace(/デ/g, 'ﾃﾞ').replace(/ド/g, 'ﾄﾞ')
-              .replace(/バ/g, 'ﾊﾞ').replace(/ビ/g, 'ﾋﾞ').replace(/ブ/g, 'ﾌﾞ').replace(/ベ/g, 'ﾍﾞ').replace(/ボ/g, 'ﾎﾞ')
-              .replace(/パ/g, 'ﾊﾟ').replace(/ピ/g, 'ﾋﾟ').replace(/プ/g, 'ﾌﾟ').replace(/ペ/g, 'ﾍﾟ').replace(/ポ/g, 'ﾎﾟ')
-              .replace(/ァ/g, 'ｧ').replace(/ィ/g, 'ｨ').replace(/ゥ/g, 'ｩ').replace(/ェ/g, 'ｪ').replace(/ォ/g, 'ｫ')
-              .replace(/ャ/g, 'ｬ').replace(/ュ/g, 'ｭ').replace(/ョ/g, 'ｮ').replace(/ッ/g, 'ｯ') 
-              .replace(/ー/g, 'ｰ'); // 長音符
+            let converted = '';
+            for (let i = 0; i < tempStr.length; i++) {
+                let char = tempStr[i];
+                // 濁点・半濁点付き文字の処理（結合文字）
+                if (i + 1 < tempStr.length && (tempStr[i+1] === 'ﾞ' || tempStr[i+1] === 'ﾟ')) {
+                    const combinedChar = char + tempStr[i+1];
+                    if (kanaMap[combinedChar]) {
+                        converted += kanaMap[combinedChar];
+                        i++; // 次の文字（濁点/半濁点）をスキップ
+                        continue;
+                    }
+                }
+                // 通常の文字変換
+                if (kanaMap[char]) {
+                    converted += kanaMap[char];
+                } else {
+                    converted += char; // 変換できない文字はそのまま
+                }
+            }
+            return converted;
         }
+
 
         /**
          * 住所文字列から郵便番号を抽出する関数。
@@ -451,8 +494,12 @@
          * @returns {string} 抽出された7桁の郵便番号（ハイフンなし、ゼロ埋め）または空文字列。
          */
         function getPostalCodeFromAddress(address) {
+            // 全角数字と全角ハイフンを半角に変換
+            let normalizedAddress = address.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            normalizedAddress = normalizedAddress.replace(/ー/g, '-');
+
             // 7桁の数字またはXXX-XXXX形式の郵便番号を検索
-            const postcodeMatch = address.match(/(\d{3}[-]?\d{4})/);
+            const postcodeMatch = normalizedAddress.match(/(\d{3}[-]?\d{4})/);
             if (postcodeMatch && postcodeMatch[1]) {
                 const postalCode = postcodeMatch[1].replace(/-/g, ''); // ハイフンを除去
                 return postalCode.padStart(7, '0'); // 7桁にゼロ埋め

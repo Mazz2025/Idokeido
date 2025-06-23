@@ -128,6 +128,17 @@
             <button id="downloadCsvButton" class="btn btn-success flex-1" disabled>CSVをダウンロード</button>
         </div>
 
+        <!-- Excelでのゼロ欠落に関する注意書き -->
+        <div id="excelWarning" class="message-box message-warning text-sm mt-2">
+            <p class="font-bold">【ダウンロードファイルを開く際の注意】</p>
+            <p>ダウンロードしたCSVファイルをExcelで直接開くと、郵便番号や市区町村コードなどの先頭の「0」が消える場合があります。</p>
+            <p>これはExcelの自動変換によるものです。ゼロを保持するには、以下のいずれかの方法で開いてください:</p>
+            <ul class="list-disc list-inside ml-4 mt-1">
+                <li>メモ帳やテキストエディタで開く。</li>
+                <li>Excelの「データ」タブ → 「データを取り込み」 → 「テキストまたはCSVから」を選択し、インポートウィザードで列のデータ形式を「テキスト」に指定して取り込む。</li>
+            </ul>
+        </div>
+        
         <div id="messageBox" class="message-box message-info hidden">
             <p id="messageText"></p>
         </div>
@@ -406,13 +417,21 @@
         }
 
         /**
-         * 全角カタカナを半角カタカナに変換する関数
+         * 全角ひらがな、全角カタカナを半角カタカナに変換する関数
          * @param {string} str - 変換する文字列
          * @returns {string} 半角カタカナに変換された文字列
          */
         function toHalfWidthKatakana(str) {
             if (!str) return '';
-            return str.replace(/[\u30a1-\u30f6]/g, function(match) {
+            let tempStr = str;
+
+            // Step 1: Convert full-width Hiragana to full-width Katakana
+            tempStr = tempStr.replace(/[\u3041-\u3096]/g, function(match) {
+                return String.fromCharCode(match.charCodeAt(0) + 0x60);
+            });
+
+            // Step 2: Convert full-width Katakana to half-width Katakana
+            return tempStr.replace(/[\u30a1-\u30f6]/g, function(match) {
                 var chr = match.charCodeAt(0) - 0x60;
                 return String.fromCharCode(chr);
             }).replace(/ヴ/g, 'ｳﾞ') // ヴ
@@ -789,7 +808,7 @@
                         // 郵便番号は数字以外の文字を除去し、7桁にゼロ埋め
                         outputRowValues[outputHeader] = (String(outputRowValues[outputHeader])).replace(/\D/g, '').padStart(7, '0');
                     } else if (outputHeader === '店舗名(カナ)') {
-                        // 全角カタカナを半角に変換し、'PMK'を付加
+                        // 全角ひらがな・カタカナを半角カタカナに変換し、'PMK'を付加
                         outputRowValues[outputHeader] = toHalfWidthKatakana(String(outputRowValues[outputHeader])) + 'PMK';
                     }
                 }
@@ -861,7 +880,7 @@
 
             const csvContent = resultData.join('\n');
             // ダウンロード時の文字コードはUTF-8-BOMとするのがExcelで文字化けしにくい
-            const blob = new Blob(['\ufeff', csvContent], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob(['\ufeff', csvContent], { type: 'text/csv;charset=utf-8;');
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

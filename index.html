@@ -193,6 +193,7 @@
                 csvFileInput.disabled = false;
                 geocodeButton.disabled = false; 
             } else {
+                // 駅データが読み込めなかった場合のメッセージ
                 showMessage('駅データを読み込めませんでした。最寄り駅検索機能は利用できません。ネットワーク接続またはURLを確認してください。', 'error');
                 csvFileInput.disabled = false;
                 geocodeButton.disabled = true; // 駅データがないと最寄り駅検索ができないため無効化
@@ -442,24 +443,51 @@
 
                 if (geoJson && geoJson.features) {
                     stationsData = geoJson.features.map(feature => {
-                        // GeoJSONの座標は [経度, 緯度] の順
-                        const longitude = feature.geometry.coordinates[0];
-                        const latitude = feature.geometry.coordinates[1];
+                        let longitude = null;
+                        let latitude = null;
+
+                        // GeoJSONのgeometryタイプに応じて座標を抽出
+                        if (feature.geometry && feature.geometry.coordinates) {
+                            if (feature.geometry.type === "Point") {
+                                longitude = feature.geometry.coordinates[0];
+                                latitude = feature.geometry.coordinates[1];
+                            } else if (feature.geometry.type === "LineString") {
+                                // LineStringの場合、最初の点の座標を使用
+                                if (feature.geometry.coordinates.length > 0) {
+                                    longitude = feature.geometry.coordinates[0][0];
+                                    latitude = feature.geometry.coordinates[0][1];
+                                }
+                            } else if (feature.geometry.type === "MultiLineString") {
+                                // MultiLineStringの場合、最初の線分の最初の点の座標を使用
+                                if (feature.geometry.coordinates.length > 0 && feature.geometry.coordinates[0].length > 0) {
+                                    longitude = feature.geometry.coordinates[0][0][0];
+                                    latitude = feature.geometry.coordinates[0][0][1];
+                                }
+                            }
+                            // 他のGeometryCollectionなどの複雑なタイプは現時点では考慮しない
+                        }
+
                         // 駅名はプロパティの N02_005 に格納されていることを想定
                         const station_name = feature.properties ? feature.properties.N02_005 : '不明な駅名';
 
-                        return { station_name, latitude, longitude };
-                    }).filter(station => !isNaN(station.latitude) && !isNaN(station.longitude)); // 無効な緯度経度を除外
+                        // 緯度経度が数値であることを確認し、無効な場合はnullを返す
+                        if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
+                            return { station_name, latitude, longitude };
+                        } else {
+                            console.warn(`駅名 "${station_name}" のGeoJSONに無効または非対応のgeometryタイプ/座標が見つかりました:`, feature.geometry);
+                            return null; // この駅は後でフィルタリングで除外される
+                        }
+                    }).filter(station => station !== null); // nullをフィルタリングして除外
 
                     console.log('駅データ読み込み完了 (GeoJSON):', stationsData);
                     showMessage(`駅データ ${stationsData.length} 件を読み込みました。`);
                 } else {
-                    showMessage('GeoJSONファイルが空か、形式が不正です。', 'error');
+                    showMessage('GeoJSONファイルが空か、形式が不正です。GeoJSONファイルに "features" 配列が含まれているか確認してください。', 'error');
                     stationsData = [];
                 }
             } catch (error) {
                 console.error('駅データ読み込みエラー:', error);
-                showMessage('駅データを読み込めませんでした。URLが正しいか、CORSが許可されているか確認してください。', 'error');
+                showMessage('駅データを読み込めませんでした。URLが正しいか、CORSが許可されているか、GeoJSONファイルの構造が正しいか確認してください。', 'error');
                 stationsData = [];
             }
         }

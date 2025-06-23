@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>住所から緯度経度を取得</title>
+    <title>住所から緯度経度と市区町村コードを取得</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -34,6 +34,9 @@
         .btn-success {
             @apply bg-green-600 hover:bg-green-700 focus:ring-green-500;
         }
+        .btn-secondary {
+            @apply bg-gray-500 hover:bg-gray-600 focus:ring-gray-400;
+        }
         .btn-disabled {
             @apply bg-gray-400 cursor-not-allowed;
         }
@@ -59,21 +62,33 @@
 </head>
 <body>
     <div class="container">
-        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">住所から緯度経度を取得</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">住所から緯度経度と市区町村コードを取得</h1>
 
         <div class="mb-6 bg-blue-50 p-4 rounded-lg shadow-sm">
             <h2 class="text-xl font-semibold text-blue-800 mb-3">はじめに</h2>
             <p class="text-gray-700 mb-2">
-                このツールは、CSVファイル内の住所情報から緯度と経度を取得し、新しいCSVファイルとして出力します。
+                このツールは、CSVファイル内の住所情報から緯度、経度、そして**市区町村コード**を取得し、新しいCSVファイルとして出力します。
             </p>
             <p class="text-gray-700 font-medium">
                 <span class="text-red-600 font-bold">重要:</span> Google スプレッドシートをご利用の場合、「ファイル」>「ダウンロード」>「カンマ区切り形式（.csv）」でCSVファイルをダウンロードしてからアップロードしてください。
+            </p>
+            <p class="text-gray-700 text-sm mt-3">
+                <span class="font-bold">【APIと市区町村コードについて】</span><br>
+                本ツールは、緯度経度の取得には国土地理院のAPIを利用します。<br>
+                市区町村コードの取得には、**外部のCSVマスターデータ**を読み込み、住所と照合します。このマスターデータは、**お客様が指定するURL**から読み込まれます。<br>
+                住所が「1-2-3」のように入力されている場合、API呼び出し前に「1丁目2番3号」のように**自動的に変換**して取得を試みます。<br>
+                マスターデータでの照合ができない場合やAPIエラーの場合は「不明」と表示されます。<br>
+                実行後、ブラウザのF12キーで開発者ツールを開き、[Console]タブをご確認ください。APIレスポンスやマスターデータ検索の詳細なログが表示されます。
+            </p>
+            <p class="text-red-600 text-sm mt-2 font-bold">
+                注: マスターデータのURLは、このHTMLコード内の `masterDataUrl` 変数を、お客様がGitHubにアップロードしたCSVファイルのRaw URLに置き換える必要があります。
             </p>
         </div>
 
         <div class="mb-4">
             <label for="csvFile" class="block text-gray-700 text-sm font-bold mb-2">CSVファイルをアップロード:</label>
             <input type="file" id="csvFile" accept=".csv" class="mb-4">
+            <button id="clearFileButton" class="btn btn-secondary text-sm px-4 py-2 mt-2">ファイルの選択をクリア</button>
         </div>
 
         <div class="mb-4">
@@ -95,7 +110,7 @@
         </div>
 
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
-            <button id="geocodeButton" class="btn btn-primary flex-1">緯度経度を取得</button>
+            <button id="geocodeButton" class="btn btn-primary flex-1" disabled>緯度経度とコードを取得</button>
             <button id="downloadCsvButton" class="btn btn-success flex-1" disabled>CSVをダウンロード</button>
         </div>
 
@@ -113,7 +128,8 @@
     <script>
         // DOM要素の取得
         const csvFileInput = document.getElementById('csvFile');
-        const encodingSelect = document.getElementById('encodingSelect'); // 追加
+        const clearFileButton = document.getElementById('clearFileButton');
+        const encodingSelect = document.getElementById('encodingSelect');
         const addressColumnInput = document.getElementById('addressColumn');
         const geocodeButton = document.getElementById('geocodeButton');
         const downloadCsvButton = document.getElementById('downloadCsvButton');
@@ -127,7 +143,94 @@
 
         let parsedData = []; // パースされたCSVデータを保持
         let headers = [];    // CSVヘッダーを保持
-        let resultData = []; // 緯度経度を追加した結果データを保持
+        let resultData = []; // 緯度経度とコードを追加した結果データを保持
+        let municipalMasterData = []; // 外部から読み込むマスターデータを保持
+
+        // --- マスターデータのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
+        // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/municipal_codes.csv'
+        // GitHubにアップロードした municipal_codes.csv の「Raw」ボタンをクリックして表示されるURLを正確に貼り付けてください。
+        const masterDataUrl = 'YOUR_RAW_MASTER_DATA_CSV_URL_HERE'; 
+
+        // --- 出力CSVファイルの最終的なヘッダー順とマッピング ---
+        const OUTPUT_HEADERS = [
+            '企業コード', '店舗コード', 'ロケール', '店舗名(漢字)', '店舗名(カナ)', '請求先コード1',
+            '請求先コード2', '使用不可フラグ', '郵便番号', '市区町村コード', 'L2コード', '国交省住所1',
+            '国交省住所2', '国交省住所補足', '住所1', '住所2', '住所3', '電話番号', 'FAX番号',
+            '担当部門', '担当者役職', '担当者名', '担当者MAIL', '代表業態コード', '業態中分類コード',
+            '旧業態コード', '旧業態中分類コード', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
+            '鉄道最寄駅', 'バス最寄駅', '添付ファイルコード', 'ファイル名', 'ファイルアップロード日',
+            'SEJDO名', '免許品', '実績年月日1', '実績作業量1', '実績年月日2', '実績作業量2',
+            '実績年月日3', '実績作業量3', '登録日時', '登録ユーザID', '更新日時', '更新ユーザID'
+        ];
+
+        // --- 入力CSVと出力CSVのマッピング (特定の変換が必要なもののみ) ---
+        // key: 出力ヘッダー名, value: 入力CSVのヘッダー名または特殊な処理
+        const INPUT_TO_OUTPUT_MAPPING = {
+            '企業名': 'クライアント名', // 'クライアント名'は'企業名'として最初の列に出力
+            '店舗名(漢字)': '店舗名',
+            '店舗名(カナ)': 'フリガナ', // 半角カタカナ変換＋PMK付加
+            '郵便番号': '郵便番号',
+            '国交省住所1': '住所', // GSI APIのproperties.titleから取得
+            '顧客側店舗コード': '顧客店番'
+        };
+
+
+        // アプリ起動時にマスターデータを読み込む
+        window.onload = async () => {
+            if (masterDataUrl === 'YOUR_RAW_MASTER_DATA_CSV_URL_HERE' || !masterDataUrl.startsWith('http')) {
+                showMessage('警告: 市区町村コードのマスターデータのURLが設定されていません。コードが「不明」になる可能性があります。コード内の `masterDataUrl` 変数を正しいURLに置き換えてください。', 'error');
+                csvFileInput.disabled = false;
+                geocodeButton.disabled = false; 
+                return;
+            }
+
+            await loadMunicipalMasterData();
+            // マスターデータが読み込まれたら、CSVアップロードとジオコーディングボタンを有効にする
+            if (municipalMasterData.length > 0) {
+                showMessage('アプリが起動しました。CSVファイルをアップロードしてください。');
+                csvFileInput.disabled = false;
+                geocodeButton.disabled = false; // マスターデータがなくても緯度経度検索は可能なので、ボタンは有効にしておく
+            } else {
+                showMessage('市区町村コードのマスターデータを読み込めませんでした。コード検索は利用できません。ネットワーク接続またはURLを確認してください。', 'error');
+                csvFileInput.disabled = false;
+                geocodeButton.disabled = false; // 緯度経度検索は可能
+            }
+        };
+
+        // マスターデータを外部から読み込む関数
+        async function loadMunicipalMasterData() {
+            showMessage('市区町村コードのマスターデータを読み込み中...', 'info');
+            try {
+                const response = await fetch(masterDataUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch master data: ${response.status} ${response.statusText}`);
+                }
+                const csvText = await response.text();
+                // マスターデータCSVをパース (code, pref, city の3列を想定)
+                const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+                if (lines.length > 1) { // ヘッダー行とデータ行があることを確認
+                    const masterHeaders = lines[0].split(',').map(h => h.trim());
+                    municipalMasterData = lines.slice(1).map(line => {
+                        const values = line.split(',');
+                        const row = {};
+                        masterHeaders.forEach((header, i) => {
+                            row[header] = values[i] ? values[i].trim() : '';
+                        });
+                        return row;
+                    });
+                    console.log('マスターデータ読み込み完了:', municipalMasterData);
+                    showMessage(`マスターデータ ${municipalMasterData.length} 件を読み込みました。`);
+                } else {
+                    showMessage('マスターデータCSVが空か、形式が不正です。', 'error');
+                    municipalMasterData = [];
+                }
+            } catch (error) {
+                console.error('マスターデータ読み込みエラー:', error);
+                showMessage('マスターデータを読み込めませんでした。URLが正しいか、CORSが許可されているか確認してください。', 'error');
+                municipalMasterData = [];
+            }
+        }
+
 
         // メッセージ表示関数
         function showMessage(text, type = 'info') {
@@ -153,6 +256,7 @@
         csvFileInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (!file) {
+                // ファイル選択がキャンセルされた場合、現在の状態を維持
                 return;
             }
 
@@ -161,18 +265,48 @@
 
             reader.onload = (e) => {
                 const text = e.target.result;
-                parseCsv(text);
-                showMessage('CSVファイルが読み込まれました。');
-                geocodeButton.disabled = false;
-                downloadCsvButton.disabled = true; // 新しいファイルを読み込んだらダウンロードボタンを無効化
-                progressBarContainer.classList.add('hidden'); // プログレスバーをリセット
+                try {
+                    parseCsv(text);
+                    showMessage('CSVファイルが読み込まれました。');
+                    geocodeButton.disabled = false;
+                    downloadCsvButton.disabled = true; // 新しいファイルを読み込んだらダウンロードボタンを無効化
+                    progressBarContainer.classList.add('hidden'); // プログレスバーをリセット
+                    headerDisplay.classList.remove('hidden'); // ヘッダー表示を常に表示
+                } catch (error) {
+                    showMessage('CSVのパース中にエラーが発生しました。ファイル形式または文字コードが正しくない可能性があります。', 'error');
+                    console.error("CSV parsing error:", error);
+                    geocodeButton.disabled = true;
+                    headerDisplay.classList.add('hidden'); // エラー時はヘッダー表示を隠す
+                }
             };
             reader.onerror = () => {
                 showMessage('ファイルの読み込み中にエラーが発生しました。選択した文字コードが正しくない可能性があります。', 'error');
                 geocodeButton.disabled = true;
+                headerDisplay.classList.add('hidden'); // エラー時はヘッダー表示を隠す
             };
             reader.readAsText(file, encoding); // 選択された文字コードで読み込む
         });
+
+        // ファイル選択クリアボタンイベントリスナー
+        clearFileButton.addEventListener('click', () => {
+            csvFileInput.value = ''; // ファイル選択をクリア
+            parsedData = [];
+            headers = [];
+            resultData = [];
+            addressColumnInput.value = ''; // 住所列名もクリア
+            parsedHeadersText.textContent = ''; // 認識されたヘッダーをクリア
+            headerDisplay.classList.add('hidden'); // ヘッダー表示を隠す
+            showMessage('ファイルの選択がクリアされました。', 'info');
+            geocodeButton.disabled = true; // クリアしたらジオコーディングボタンも無効化
+            downloadCsvButton.disabled = true;
+            progressBarContainer.classList.add('hidden'); // プログレスバーを隠す
+            // マスターデータが読み込まれている場合はジオコーディングボタンを再度有効にする
+            if (municipalMasterData.length > 0) {
+                geocodeButton.disabled = false;
+                showMessage('ファイルの選択がクリアされました。新しいCSVファイルをアップロードしてください。');
+            }
+        });
+
 
         // CSVパース関数
         function parseCsv(csvText) {
@@ -182,7 +316,7 @@
                 headers = [];
                 parsedHeadersText.textContent = ''; // ヘッダー表示をクリア
                 headerDisplay.classList.add('hidden'); // ヘッダー表示を隠す
-                return;
+                throw new Error("CSVファイルが空またはデータがありません。");
             }
             // 区切り文字の自動判別（カンマ、セミコロン、タブ）
             let separator = ',';
@@ -207,38 +341,156 @@
             headerDisplay.classList.remove('hidden');
         }
 
-        // 国土地理院のAPIで緯度経度を取得する関数
-        async function getLatLonFromAddress(address) {
-            if (!address) {
-                return { latitude: '', longitude: '' };
+        /**
+         * 住所の「1-2-3」のような表記を「1丁目2番3号」のように変換するヘルパー関数。
+         *
+         * @param {string} address - 元の住所文字列。
+         * @returns {string} 変換された住所文字列。
+         */
+        function normalizeAddressHyphens(address) {
+            let normalizedAddress = address;
+
+            // 「数字-数字-数字」または「数字-数字」を「丁目」「番」「号」に変換
+            // 例: 1-2-3 -> 1丁目2番3号, 1-2 -> 1丁目2番
+            // 丁目、番、号の前に既に漢数字がある場合は変換しないようにする
+            normalizedAddress = normalizedAddress.replace(/(\d+)[-ー](\d+)(?:[-ー](\d+))?(?![丁番号])/g, (match, p1, p2, p3) => {
+                let result = '';
+                // 1つ目の数字は「丁目」
+                result += p1 + '丁目';
+                // 2つ目の数字は「番」
+                result += p2 + '番';
+                // 3つ目の数字があれば「号」
+                if (p3) {
+                    result += p3 + '号';
+                }
+                return result;
+            });
+            
+            // 「1番2」のような「号」がない場合
+            normalizedAddress = normalizedAddress.replace(/(\d+番)(\d+)(?![号])/g, '$1$2号');
+            // 「1丁目2番3」のような「号」がない場合
+            normalizedAddress = normalizedAddress.replace(/(\d+丁(?:目)?\d+番)(\d+)(?![号])/g, '$1$2号');
+
+            return normalizedAddress;
+        }
+
+        /**
+         * 全角カタカナを半角カタカナに変換する関数
+         * @param {string} str - 変換する文字列
+         * @returns {string} 半角カタカナに変換された文字列
+         */
+        function toHalfWidthKatakana(str) {
+            if (!str) return '';
+            return str.replace(/[\u30a1-\u30f6]/g, function(match) {
+                var chr = match.charCodeAt(0) - 0x60;
+                return String.fromCharCode(chr);
+            }).replace(/ヴ/g, 'ｳﾞ') // ヴ
+              .replace(/ガ/g, 'ｶﾞ').replace(/ギ/g, 'ｷﾞ').replace(/グ/g, 'ｸﾞ').replace(/ゲ/g, 'ｹﾞ').replace(/ゴ/g, 'ｺﾞ')
+              .replace(/ザ/g, 'ｻﾞ').replace(/ジ/g, 'ｼﾞ').replace(/ズ/g, 'ｽﾞ').replace(/ゼ/g, 'ｾﾞ').replace(/ゾ/g, 'ｿﾞ')
+              .replace(/ダ/g, 'ﾀﾞ').replace(/ヂ/g, 'ﾁﾞ').replace(/ヅ/g, 'ﾂﾞ').replace(/デ/g, 'ﾃﾞ').replace(/ド/g, 'ﾄﾞ')
+              .replace(/バ/g, 'ﾊﾞ').replace(/ビ/g, 'ﾋﾞ').replace(/ブ/g, 'ﾌﾞ').replace(/ベ/g, 'ﾍﾞ').replace(/ボ/g, 'ﾎﾞ')
+              .replace(/パ/g, 'ﾊﾟ').replace(/ピ/g, 'ﾋﾟ').replace(/プ/g, 'ﾌﾟ').replace(/ペ/g, 'ﾍﾟ').replace(/ポ/g, 'ﾎﾟ')
+              .replace(/ァ/g, 'ｧ').replace(/ィ/g, 'ｨ').replace(/ゥ/g, 'ｩ').replace(/ェ/g, 'ｪ').replace(/ォ/g, 'ｫ')
+              .replace(/ャ/g, 'ｬ').replace(/ュ/g, 'ｭ').replace(/ョ/g, 'ｮ').replace(/ッ/g, 'ｯ')
+              .replace(/ー/g, 'ｰ'); // 長音符
+        }
+
+
+        // 都道府県名と市区町村名のみを抽出するヘルパー関数
+        function getPrefCityWardForLookup(fullAddress) {
+            let pref = '';
+            let cityWard = '';
+
+            // 都道府県を検出 (東京都, 北海道, 京都府, 大阪府, XX県)
+            const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
+            const prefMatch = fullAddress.match(prefRegex);
+            if (prefMatch) {
+                pref = prefMatch[0];
+                let remainingAddress = fullAddress.substring(pref.length);
+
+                // 市区町村を検出 (市, 区, 町, 村 で終わる)
+                // より多くのパターンをカバーするため、区、郡、町、村を考慮
+                // 例: 横浜市中区, 〇〇郡〇〇町
+                const cityWardRegex = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/; 
+                const cityWardMatch = remainingAddress.match(cityWardRegex);
+
+                if (cityWardMatch) {
+                    cityWard = cityWardMatch[1]; 
+                }
             }
+            return { pref, city: cityWard };
+        }
+
+
+        // 国土地理院のAPIで緯度経度を取得する関数
+        async function getLatLonAndGSIAddressTitle(address) {
+            if (!address) {
+                return { latitude: '', longitude: '', gsiAddressTitle: '' };
+            }
+
             const encodedAddress = encodeURIComponent(address);
-            // 国土地理院の住所検索APIを使用
             const apiUrl = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodedAddress}`;
 
             try {
                 const response = await fetch(apiUrl);
-                if (!response.ok) {
-                    console.error(`APIリクエスト失敗: ${response.status} ${response.statusText} for address: ${address}`);
-                    return { latitude: 'エラー', longitude: 'エラー' };
-                }
                 const data = await response.json();
+                console.log(`住所 "${address}" の国土地理院APIレスポンス:`, data); // GSI APIレスポンスをログ出力
 
-                // 緯度経度情報が配列で返されるため、最初の要素を確認
+                if (!response.ok) {
+                    console.error(`国土地理院APIリクエスト失敗: ${response.status} ${response.statusText} for address: ${address}`);
+                    return { latitude: 'エラー', longitude: 'エラー', gsiAddressTitle: 'エラー' };
+                }
+
                 if (data && data.length > 0 && data[0].geometry && data[0].geometry.coordinates) {
-                    // 座標は [経度, 緯度] の順で返される
                     const longitude = data[0].geometry.coordinates[0];
                     const latitude = data[0].geometry.coordinates[1];
-                    return { latitude, longitude };
+                    const gsiAddressTitle = data[0].properties ? data[0].properties.title : ''; // 国交省住所1用
+                    return { latitude, longitude, gsiAddressTitle };
                 } else {
-                    console.warn(`住所 "${address}" の緯度経度が見つかりませんでした。`);
-                    return { latitude: '見つかりません', longitude: '見つかりません' };
+                    console.warn(`住所 "${address}" の緯度経度または国交省住所が見つかりませんでした（国土地理院APIレスポンスデータ不足）。`);
+                    return { latitude: '見つかりません', longitude: '見つかりません', gsiAddressTitle: '見つかりません' };
                 }
             } catch (error) {
-                console.error(`住所 "${address}" の緯度経度取得中にエラーが発生しました:`, error);
-                return { latitude: 'エラー', longitude: 'エラー' };
+                console.error(`住所 "${address}" の国土地理院APIからの緯度経度・コード取得中にエラーが発生しました:`, error);
+                return { latitude: 'エラー', longitude: 'エラー', gsiAddressTitle: 'エラー' };
             }
         }
+
+        // マスターデータから市区町村コードを取得する関数
+        function getMunicipalCodeFromMaster(address) {
+            if (municipalMasterData.length === 0) {
+                console.warn('市区町村マスターデータが読み込まれていません。');
+                return '不明 (マスターデータなし)';
+            }
+
+            const { pref, city } = getPrefCityWardForLookup(address);
+            let foundCode = '不明';
+            let bestMatchLength = 0;
+
+            if (!pref || !city) {
+                console.warn(`住所 "${address}" から都道府県名または市区町村名が抽出できませんでした。`);
+                return '不明';
+            }
+
+            // 完全一致を優先して検索
+            for (const item of municipalMasterData) {
+                const fullCityNameInMaster = item.pref + item.city;
+                const searchTarget = pref + city; // 検索対象となる住所の都道府県+市区町村部分
+
+                if (searchTarget.startsWith(fullCityNameInMaster) && fullCityNameInMaster.length > bestMatchLength) {
+                    foundCode = item.code;
+                    bestMatchLength = fullCityNameInMaster.length;
+                    console.log(`住所 "${address}" からマスターデータにマッチしました: ${item.pref}${item.city} -> ${item.code}`);
+                }
+            }
+
+            if (bestMatchLength === 0) {
+                 console.warn(`住所 "${address}" (${pref}${city}) に対応する市区町村コードがマスターデータに見つかりませんでした。`);
+            }
+
+            return foundCode;
+        }
+
 
         // 緯度経度取得ボタンクリックイベントリスナー
         geocodeButton.addEventListener('click', async () => {
@@ -258,54 +510,87 @@
                 return;
             }
 
+            // 入力CSVの必須ヘッダーを確認
+            const requiredInputHeaders = [
+                'クライアント名', '店舗名', 'フリガナ', '郵便番号', '住所', '顧客店番'
+            ];
+            const missingInputHeaders = requiredInputHeaders.filter(header => !headers.includes(header));
+            if (missingInputHeaders.length > 0) {
+                showMessage(`入力CSVに必要な列が不足しています: ${missingInputHeaders.join(', ')}`, 'error');
+                return;
+            }
+
+
             geocodeButton.disabled = true;
             downloadCsvButton.disabled = true;
-            showMessage('緯度経度を取得中です...（時間がかかる場合があります）', 'info');
+            showMessage('緯度経度と市区町村コードを取得中です...（時間がかかる場合があります）', 'info');
             updateProgressBar(0);
 
             resultData = [];
+            resultData.push(OUTPUT_HEADERS.join(',')); // 出力ヘッダー行を追加
+
             const totalAddresses = parsedData.length;
             let processedCount = 0;
 
-            // 新しいヘッダーを作成
-            const newHeaders = [...headers];
-            if (!newHeaders.includes('緯度')) {
-                newHeaders.push('緯度');
-            }
-            if (!newHeaders.includes('経度')) {
-                newHeaders.push('経度');
-            }
-            resultData.push(newHeaders.join(',')); // ヘッダー行を追加
+            for (let i = 0; i < totalAddresses; i++) {
+                const row = parsedData[i];
+                const inputAddress = row[addressColumnName]; // ジオコーディングに使用する元の住所
 
-            for (const row of parsedData) {
-                const address = row[addressColumnName];
-                const { latitude, longitude } = await getLatLonFromAddress(address);
+                // 住所のハイフン表記を変換
+                const normalizedAddress = normalizeAddressHyphens(inputAddress);
+                console.log(`元の住所: "${inputAddress}" -> 変換後住所: "${normalizedAddress}"`);
 
-                // 既存の行データに緯度経度を追加
-                const newRow = { ...row };
-                newRow['緯度'] = latitude;
-                newRow['経度'] = longitude;
+                // 国土地理院APIから緯度経度と国交省住所1を取得
+                const { latitude, longitude, gsiAddressTitle } = await getLatLonAndGSIAddressTitle(normalizedAddress);
+                
+                // マスターデータから市区町村コードを取得
+                const municipalCode = getMunicipalCodeFromMaster(inputAddress); // マスター検索は元の住所で
 
-                // 新しいヘッダーの順番に合わせて値を取得
-                const rowValues = newHeaders.map(header => {
-                    const value = newRow[header];
-                    // CSVの値を適切にエスケープ（カンマや引用符を含む場合）
+                // --- 新しい出力行のデータを構築 ---
+                const outputRowValues = {};
+
+                // OUTPUT_HEADERSの順に値を設定
+                for (const header of OUTPUT_HEADERS) {
+                    outputRowValues[header] = ''; // まず全て空で初期化
+                }
+
+                // マッピングと変換
+                outputRowValues['企業名'] = row[INPUT_TO_OUTPUT_MAPPING['企業名']] || '';
+                outputRowValues['店舗名(漢字)'] = row[INPUT_TO_OUTPUT_MAPPING['店舗名(漢字)']] || '';
+                
+                const furigana = row[INPUT_TO_OUTPUT_MAPPING['店舗名(カナ)']] || '';
+                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(furigana) + 'PMK'; // 半角カタカナ変換＋PMK付加
+                
+                outputRowValues['郵便番号'] = row[INPUT_TO_OUTPUT_MAPPING['郵便番号']] || '';
+                outputRowValues['国交省住所1'] = gsiAddressTitle; // 国交省住所1はAPIから取得した整形済み住所
+                outputRowValues['顧客側店舗コード'] = row[INPUT_TO_OUTPUT_MAPPING['顧客側店舗コード']] || '';
+                
+                outputRowValues['緯度'] = latitude;
+                outputRowValues['経度'] = longitude;
+                outputRowValues['市区町村コード'] = municipalCode;
+
+                // CSV形式に変換してresultDataに追加
+                const csvRow = OUTPUT_HEADERS.map(header => {
+                    const value = outputRowValues[header];
+                    // CSVの値を適切にエスケープ（カンマや引用符、改行を含む場合）
                     if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r'))) {
                         return `"${value.replace(/"/g, '""')}"`;
                     }
                     return value;
-                });
-                resultData.push(rowValues.join(','));
+                }).join(',');
+                resultData.push(csvRow);
+
 
                 processedCount++;
                 const progress = (processedCount / totalAddresses) * 100;
                 updateProgressBar(progress);
 
-                // APIへの負荷を軽減するため、少し待つ
-                await new Promise(resolve => setTimeout(resolve, 100)); // 100ミリ秒待機
+                // APIへの負荷を軽減するため、少し待つ (緯度経度取得のため)
+                // この行を削除することで速度が向上します
+                // await new Promise(resolve => setTimeout(resolve, 100)); // 100ミリ秒待機
             }
 
-            showMessage('緯度経度の取得が完了しました！', 'success');
+            showMessage('緯度経度と市区町村コードの取得が完了しました！', 'success');
             geocodeButton.disabled = false;
             downloadCsvButton.disabled = false;
             updateProgressBar(100);
@@ -314,7 +599,7 @@
         // CSVダウンロードボタンクリックイベントリスナー
         downloadCsvButton.addEventListener('click', () => {
             if (resultData.length === 0) {
-                showMessage('まず緯度経度を取得してください。', 'error');
+                showMessage('まず緯度経度と市区町村コードを取得してください。', 'error');
                 return;
             }
 
@@ -324,7 +609,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = '住所_緯度経度_変換済み.csv';
+            a.download = 'データ_変換済み.csv'; // ダウンロードファイル名を変更
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -333,6 +618,7 @@
         });
 
         // 初期状態
+        csvFileInput.disabled = true; // マスターデータ読み込みまで無効化
         geocodeButton.disabled = true;
         downloadCsvButton.disabled = true;
     </script>

@@ -445,14 +445,14 @@
             }
 
             // 市区町村データからコードを検索
-            // 完全一致または市区町村が指定された市区町村で始まる場合を検索
+            // ★CSVのヘッダー名 'pref', 'city', 'code' に合わせて修正
             const found = cityCodesData.find(item => 
-                item['都道府県'] === pref && (item['市区町村'] === city || city.startsWith(item['市区町村']))
+                item['pref'] === pref && (item['city'] === city || city.startsWith(item['city']))
             );
 
-            if (found && found['市区町村コード']) {
+            if (found && found['code']) { // ★'市区町村コード' を 'code' に修正
                 // ★市区町村コードを5桁にゼロ埋め
-                const paddedCode = String(found['市区町村コード']).padStart(5, '0');
+                const paddedCode = String(found['code']).padStart(5, '0'); // ★'市区町村コード' を 'code' に修正
                 console.log(`住所 "${address}" -> 検出都道府県: "${pref}", 市区町村: "${city}", コード: "${paddedCode}"`);
                 return paddedCode;
             } else {

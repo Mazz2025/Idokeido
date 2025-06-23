@@ -598,4 +598,320 @@
                             } else if (feature.geometry.type === "MultiLineString") {
                                 // MultiLineStringの場合、最初の線分の最初の点の座標を使用
                                 if (feature.geometry.coordinates.length > 0 && feature.geometry.coordinates[0].length > 0) {
-                                    longitude = feature.geometry.coordina
+                                    longitude = feature.geometry.coordinates[0][0][0];
+                                    latitude = feature.geometry.coordinates[0][0][1];
+                                }
+                            }
+                            // 他のGeometryCollectionなどの複雑なタイプは現時点では考慮しない
+                        }
+
+                        // 駅名はプロパティの N02_005 に格納されていることを想定
+                        const station_name = feature.properties ? feature.properties.N02_005 : '不明な駅名';
+
+                        // 緯度経度が数値であることを確認し、無効な場合はnullを返す
+                        if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
+                            return { station_name, latitude, longitude };
+                        } else {
+                            console.warn(`駅名 "${station_name}" のGeoJSONに無効な緯度経度が見つかりました (タイプ: ${feature.geometry ? feature.geometry.type : '不明'}, Lat: ${latitude}, Lon: ${longitude}). この駅はスキップされます。`);
+                            return null; // この駅は後でフィルタリングで除外される
+                        }
+                    });
+                    
+                    stationsData = tempStations.filter(station => station !== null); // nullをフィルタリングして除外
+                    console.log('フィルタリング後の駅データ:', stationsData); 
+
+                    if (stationsData.length > 0) {
+                        console.log(`駅データ ${stationsData.length} 件の読み込みとフィルタリングが完了しました。`);
+                        // showMessage(`駅データ ${stationsData.length} 件を読み込みました。`, 'success'); // 複数データ読み込みのメッセージはonloadで一括
+                    } else {
+                        // 全てのfeaturesがフィルタリングで除外された場合
+                        showMessage('GeoJSONファイルには有効な駅データが含まれていませんでした。緯度経度情報が正しいか、サポートされているgeometryタイプか確認してください。', 'error');
+                        stationsData = []; // stationsDataを確実に空にする
+                    }
+                } else {
+                    showMessage('GeoJSONファイルが空か、形式が不正です。GeoJSONファイルに "features" 配列が含まれているか、またはその配列が空でないか確認してください。', 'error');
+                    stationsData = [];
+                }
+            } catch (error) {
+                console.error('駅データ読み込み中に致命的なエラー:', error); 
+                // throwされたエラーメッセージを直接表示
+                showMessage(`駅データを読み込めませんでした: ${error.message} ネットワーク接続またはURL、GeoJSONファイルの構造を確認してください。`, 'error'); 
+                stationsData = [];
+            }
+        }
+
+        // 市区町村コードデータを外部から読み込む関数 (CSV対応)
+        async function loadCityCodesData() {
+            showMessage('市区町村コードデータを読み込み中...', 'info');
+            try {
+                const response = await fetch(cityCodesDataUrl);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Fetch response not OK for city codes:', response.status, response.statusText, 'Body:', errorText);
+                    throw new Error(`市区町村コードデータ読み込みエラー: ${response.status} ${response.statusText}. URLまたはネットワーク接続を確認してください。`);
+                }
+                const csvText = await response.text();
+                // PapaParseを使用してCSVをパース
+                cityCodesData = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data; 
+                console.log('市区町村コードデータ読み込み完了:', cityCodesData.length, '件');
+                if (cityCodesData.length > 0) {
+                    showMessage(`市区町村コードデータ ${cityCodesData.length} 件を読み込みました。`); // タイプを info に戻し、件数を明示
+                    if (cityCodesData.length < 1700) { // 参考：全国の市区町村数は1700以上
+                        showMessage(`警告: 市区町村コードデータは読み込まれましたが、全国の全ての市区町村が含まれていない可能性があります（現在 ${cityCodesData.length} 件）。処理しようとしている住所の市区町村が含まれているかご確認ください。`, 'warning');
+                    }
+                } else {
+                    showMessage('市区町村コードデータは読み込まれましたが、有効なデータが含まれていませんでした。CSVファイルの内容を確認してください。', 'error');
+                }
+
+            } catch (error) {
+                console.error('市区町村コードデータ読み込み中にエラー:', error);
+                showMessage(`市区町村コードデータを読み込めませんでした: ${error.message} URLまたはネットワーク接続を確認してください。`, 'error');
+                cityCodesData = [];
+            }
+        }
+
+
+        /**
+         * ハバーサインの公式を使って2点間の距離をキロメートルで計算する関数
+         * @param {number} lat1 - 1点目の緯度
+         * @param {number} lon1 - 1点目の経度
+         * @param {number} lat2 - 2点目の緯度
+         * @param {number} lon2 - 2点目の経度
+         * @returns {number} 2点間の距離 (km)
+         */
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // 地球の半径 (km)
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // 距離 (km)
+        }
+
+
+        // 緯度経度取得ボタンクリックイベントリスナー
+        geocodeButton.addEventListener('click', async () => {
+            const addressColumnName = addressColumnInput.value.trim(); // 入力された列名もトリム
+
+            if (!addressColumnName) {
+                showMessage('住所の列名を入力してください。', 'error');
+                return;
+            }
+            if (parsedData.length === 0) {
+                showMessage('CSVファイルを読み込んでください。', 'error');
+                return;
+            }
+            // `includes`の代わりに`some`と厳密な比較を使用して、ヘッダーに完全に一致するものが存在するかを確認
+            if (!headers.some(h => h === addressColumnName)) {
+                showMessage(`指定された列名 "${addressColumnName}" がCSVヘッダーに見つかりません。`, 'error');
+                return;
+            }
+
+            // UIの状態を更新（処理中）
+            geocodeButton.disabled = true;
+            downloadCsvButton.disabled = true;
+            cancelButton.classList.remove('hidden'); // キャンセルボタンを表示
+            cancelButton.disabled = false; // キャンセルボタンを有効化
+
+            isProcessingCancelled = false; // キャンセルフラグをリセット
+            showMessage('緯度経度と最寄り駅を取得中です...（時間がかかる場合があります）', 'info');
+            updateProgressBar(0);
+
+            resultData = [];
+            resultData.push(OUTPUT_HEADERS.join(',')); // 出力ヘッダー行を追加
+
+            const totalAddresses = parsedData.length;
+            let processedCount = 0;
+
+            for (let i = 0; i < totalAddresses; i++) {
+                if (isProcessingCancelled) { // キャンセルフラグが立っていたら中断
+                    showMessage('処理がユーザーによってキャンセルされました。', 'warning');
+                    break; 
+                }
+
+                const row = parsedData[i];
+                const inputAddress = row[addressColumnName]; // ジオコーディングに使用する元の住所
+
+                // 住所のハイフン表記を変換
+                const normalizedAddress = normalizeAddressHyphens(inputAddress);
+                console.log(`元の住所: "${inputAddress}" -> 変換後住所: "${normalizedAddress}"`);
+
+                // 国土地理院APIから緯度経度と国交省住所1を取得
+                const { latitude, longitude, gsiAddressTitle } = await getLatLonAndGSIAddressTitle(normalizedAddress);
+                
+                // --- 最寄り駅の検索 ---
+                let nearestStationNameValue = '';
+                // let nearestStationDistanceValue = ''; // 最寄り駅距離を削除
+
+                // 緯度経度が有効な数値で、かつ駅データが読み込まれている場合にのみ最寄り駅を検索
+                if (stationsData.length > 0 && typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
+                    let minDistance = Infinity;
+                    let nearestStation = null;
+
+                    for (const station of stationsData) {
+                        // 緯度経度が数値であることを確認
+                        if (typeof station.latitude === 'number' && typeof station.longitude === 'number' && !isNaN(station.latitude) && !isNaN(station.longitude)) {
+                            const dist = haversineDistance(latitude, longitude, station.latitude, station.longitude);
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                nearestStation = station;
+                            }
+                        }
+                    }
+                    if (nearestStation) {
+                        nearestStationNameValue = nearestStation.station_name;
+                        // nearestStationDistanceValue = minDistance.toFixed(2); // 小数点以下2桁に丸める - 最寄り駅距離を削除
+                    }
+                } else if (stationsData.length === 0) {
+                    nearestStationNameValue = '駅データなし';
+                    // nearestStationDistanceValue = '駅データなし'; // 最寄り駅距離を削除
+                } else {
+                    nearestStationNameValue = '住所不明';
+                    // nearestStationDistanceValue = '住所不明'; // 最寄り駅距離を削除
+                }
+
+                // --- 市区町村コードの取得 ---
+                let cityCodeValue = '';
+                if (cityCodesData.length > 0) {
+                    cityCodeValue = getCityCode(normalizedAddress);
+                } else {
+                    cityCodeValue = 'データなし';
+                }
+
+                // --- 郵便番号の取得 ---
+                let postalCodeValue = getPostalCodeFromAddress(inputAddress); // 元の住所から取得
+
+                // --- 新しい出力行のデータを構築 ---
+                const outputRowValues = {};
+
+                // 1. Initialize all output headers to empty string
+                OUTPUT_HEADERS.forEach(header => {
+                    outputRowValues[header] = '';
+                });
+
+                // 2. Populate values based on OUTPUT_HEADERS.
+                //    This loop ensures all OUTPUT_HEADERS are filled,
+                //    either from input CSV (direct match or specific mapping) or remaining empty.
+                for (const outputHeader of OUTPUT_HEADERS) {
+                    let sourceInputHeader = outputHeader; // Assume direct match by default
+
+                    // Check for specific input-to-output header re-mappings.
+                    // These rules define which input column's data should go into a specific output column.
+                    if (outputHeader === '店舗名(漢字)') {
+                        sourceInputHeader = '店舗名'; // Output '店舗名(漢字)' comes from input '店舗名'
+                    } else if (outputHeader === '店舗名(カナ)') {
+                        sourceInputHeader = 'フリガナ'; // Output '店舗名(カナ)' comes from input 'フリガナ'
+                    } else if (outputHeader === '顧客側店舗コード') {
+                        sourceInputHeader = '顧客店番'; // Output '顧客側店舗コード' comes from input '顧客店番'
+                    }
+                    // Add more explicit re-mappings here if needed.
+                    // Example: if output 'CustomField' should come from input 'UserField':
+                    // else if (outputHeader === 'CustomField') { sourceInputHeader = 'UserField'; }
+
+
+                    // If the determined sourceInputHeader exists in the input CSV, copy its value.
+                    // This handles both direct matches (e.g., input '企業コード' -> output '企業コード')
+                    // and explicit re-mappings (e.g., input '店舗名' -> output '店舗名(漢字)').
+                    if (headers.includes(sourceInputHeader)) {
+                        outputRowValues[outputHeader] = row[sourceInputHeader] || '';
+                    }
+
+                    // Apply specific transformations immediately after getting the raw value.
+                    // These transformations always apply to the data intended for this specific outputHeader.
+                    if (outputHeader === '店舗名(カナ)') {
+                        // 全角ひらがな・カタカナを半角カタカナに変換し、'PMK'を付加
+                        outputRowValues[outputHeader] = toHalfWidthKatakana(String(outputRowValues[outputHeader])) + 'PMK';
+                    }
+                }
+
+                // 3. Overwrite/add values obtained from APIs and master data lookup.
+                //    These values always take precedence over anything copied from the input CSV.
+                outputRowValues['国交省住所1'] = gsiAddressTitle;
+                outputRowValues['緯度'] = latitude;
+                outputRowValues['経度'] = longitude;
+                outputRowValues['鉄道最寄駅'] = nearestStationNameValue;
+                outputRowValues['市区町村コード'] = cityCodeValue;
+                outputRowValues['郵便番号'] = postalCodeValue; // 住所から抽出した郵便番号を適用
+
+                // 'バス最寄駅'などの他の項目は、もし入力CSVに同名のヘッダーが存在すれば、
+                // 上記のステップ2で自動的にコピーされています。
+
+                // CSV形式に変換してresultDataに追加
+                const csvRow = OUTPUT_HEADERS.map(header => {
+                    let value = outputRowValues[header];
+
+                    // 郵便番号と市区町村コードの頭0欠落対策 (Excelで文字列として認識させる)
+                    if (header === '郵便番号' || header === '市区町村コード') {
+                        value = `'${value}`; 
+                    }
+                    
+                    // CSVの値を適切にエスケープ（カンマや引用符、改行を含む場合）
+                    if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r'))) {
+                        return `"${value.replace(/"/g, '""')}"`;
+                    }
+                    return value;
+                }).join(',');
+                resultData.push(csvRow);
+
+
+                processedCount++;
+                const progress = (processedCount / totalAddresses) * 100;
+                updateProgressBar(progress);
+            }
+
+            // 処理完了後の状態更新
+            geocodeButton.disabled = false;
+            cancelButton.classList.add('hidden'); // キャンセルボタンを非表示に
+            cancelButton.disabled = true; //念のため無効化
+
+            if (!isProcessingCancelled) {
+                showMessage('緯度経度と最寄り駅の取得が完了しました！', 'success');
+                downloadCsvButton.disabled = false;
+                updateProgressBar(100);
+            } else {
+                updateProgressBar(processedCount / totalAddresses * 100); // 中断時の進捗で停止
+                // 中断メッセージは既に表示されているため、ここでは特にメッセージ更新しない
+            }
+        });
+
+        // キャンセルボタンクリックイベントリスナー
+        cancelButton.addEventListener('click', () => {
+            isProcessingCancelled = true;
+            cancelButton.disabled = true; // キャンセルボタンを無効化
+            geocodeButton.disabled = true; // 処理中断中はジオコーディング開始ボタンも無効化
+            showMessage('処理をキャンセルしています...完了までお待ちください。', 'warning');
+            // ループが中断された後に、geocodeButtonは自動的に再有効化されます
+        });
+
+
+        // CSVダウンロードボタンクリックイベントリスナー
+        downloadCsvButton.addEventListener('click', () => {
+            if (resultData.length === 0) {
+                showMessage('まず緯度経度と最寄り駅を取得してください。', 'error');
+                return;
+            }
+
+            const csvContent = resultData.join('\n');
+            // ダウンロード時の文字コードはUTF-8-BOMとするのがExcelで文字化けしにくい
+            const blob = new Blob(['\ufeff', csvContent], { type: 'text/csv;charset=utf-8;'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'データ_変換済み.csv'; // ダウンロードファイル名を変更
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url); // 不要になったURLを解放
+            showMessage('CSVファイルをダウンロードしました。', 'success');
+        });
+
+        // 初期状態
+        csvFileInput.disabled = true; // 駅データ読み込みまで無効化
+        geocodeButton.disabled = true;
+        downloadCsvButton.disabled = true;
+        cancelButton.classList.add('hidden'); // キャンセルボタンは初期状態で非表示
+    </script>
+</body>
+</html>

@@ -34,6 +34,9 @@
         .btn-success {
             @apply bg-green-600 hover:bg-green-700 focus:ring-green-500;
         }
+        .btn-danger {
+            @apply bg-red-600 hover:bg-red-700 focus:ring-red-500;
+        }
         .btn-secondary {
             @apply bg-gray-500 hover:bg-gray-600 focus:ring-gray-400;
         }
@@ -57,6 +60,9 @@
         }
         .message-error {
             @apply bg-red-100 text-red-800;
+        }
+        .message-warning {
+            @apply bg-yellow-100 text-yellow-800;
         }
     </style>
 </head>
@@ -111,6 +117,7 @@
 
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
             <button id="geocodeButton" class="btn btn-primary flex-1" disabled>緯度経度と最寄り駅を取得</button>
+            <button id="cancelButton" class="btn btn-danger flex-1 hidden" disabled>キャンセル</button>
             <button id="downloadCsvButton" class="btn btn-success flex-1" disabled>CSVをダウンロード</button>
         </div>
 
@@ -132,6 +139,7 @@
         const encodingSelect = document.getElementById('encodingSelect');
         const addressColumnInput = document.getElementById('addressColumn');
         const geocodeButton = document.getElementById('geocodeButton');
+        const cancelButton = document.getElementById('cancelButton'); // キャンセルボタンを追加
         const downloadCsvButton = document.getElementById('downloadCsvButton');
         const messageBox = document.getElementById('messageBox');
         const messageText = document.getElementById('messageText');
@@ -144,6 +152,7 @@
         let headers = [];    // CSVヘッダーを保持
         let resultData = []; // 緯度経度と最寄り駅を追加した結果データを保持
         let stationsData = []; // 駅マスターデータを保持
+        let isProcessingCancelled = false; // 処理中断フラグ
 
         // --- 駅データのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
         // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/N02-20_Station.geojson'
@@ -157,7 +166,7 @@
             '国交省住所2', '国交省住所補足', '住所1', '住所2', '住所3', '電話番号', 'FAX番号',
             '担当部門', '担当者役職', '担当者名', '担当者MAIL', '代表業態コード', '業態中分類コード',
             '旧業態コード', '旧業態中分類コード', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
-            '鉄道最寄り駅', '最寄り駅距離(km)', // 最寄り駅と距離を追加
+            '鉄道最寄駅', '最寄り駅距離(km)', // 最寄り駅と距離を追加
             'バス最寄駅', '添付ファイルコード', 'ファイル名', 'ファイルアップロード日',
             'SEJDO名', '免許品', '実績年月日1', '実績作業量1', '実績年月日2', '実績作業量2',
             '実績年月日3', '実績作業量3', '登録日時', '登録ユーザID', '更新日時', '更新ユーザID'
@@ -179,7 +188,6 @@
         window.onload = async () => {
             // stationsDataUrlが有効なURLであるかを確認
             if (!stationsDataUrl.startsWith('http')) {
-                // GeoJSONのURLが設定されていない場合の警告メッセージ
                 showMessage('警告: 駅データのURLが設定されていません。最寄り駅検索機能は利用できません。コード内の `stationsDataUrl` 変数をGitHubにアップロードしたGeoJSONファイルのRaw URLに置き換えてください。', 'error');
                 csvFileInput.disabled = false;
                 geocodeButton.disabled = true; // 駅データがないと最寄り駅検索ができないため無効化
@@ -189,9 +197,6 @@
             await loadStationsData(); // loadStationsData will set the message
 
             // After loadStationsData, check if stationsData was successfully populated.
-            // If loadStationsData failed, it would have already set an error message.
-            // If it succeeded but stationsData is empty, it would have set a more specific error.
-            // So, only enable buttons if stationsData has content.
             if (stationsData.length > 0) {
                 // If a success message wasn't explicitly set by loadStationsData, set a general one.
                 if (!messageText.textContent.includes('件を読み込みました')) { // Avoid overwriting specific success message
@@ -204,11 +209,13 @@
                 csvFileInput.disabled = false; // CSVアップロードは可能にしておく
                 geocodeButton.disabled = true; 
             }
+            cancelButton.classList.add('hidden'); // 初期状態ではキャンセルボタンは非表示
+            downloadCsvButton.disabled = true; // 初期状態ではダウンロードボタンは無効
         };
 
         // メッセージ表示関数
         function showMessage(text, type = 'info') {
-            messageBox.classList.remove('hidden', 'message-info', 'message-success', 'message-error');
+            messageBox.classList.remove('hidden', 'message-info', 'message-success', 'message-error', 'message-warning'); // 全てのタイプをリセット
             messageBox.classList.add('p-4', 'mt-4', 'rounded-lg'); // スタイルを再適用
             messageText.textContent = text;
             if (type === 'info') {
@@ -217,6 +224,8 @@
                 messageBox.classList.add('bg-green-100', 'text-green-800');
             } else if (type === 'error') {
                 messageBox.classList.add('bg-red-100', 'text-red-800');
+            } else if (type === 'warning') {
+                messageBox.classList.add('bg-yellow-100', 'text-yellow-800');
             }
             messageBox.classList.remove('hidden'); // メッセージボックスを表示
         }
@@ -281,6 +290,7 @@
             showMessage('ファイルの選択がクリアされました。', 'info');
             geocodeButton.disabled = true; // クリアしたらジオコーディングボタンも無効化
             downloadCsvButton.disabled = true;
+            cancelButton.classList.add('hidden'); // キャンセルボタンも非表示に
             progressBarContainer.classList.add('hidden'); // プログレスバーを隠す
             // 駅データが読み込まれている場合はジオコーディングボタンを再度有効にする
             if (stationsData.length > 0) {
@@ -558,23 +568,18 @@
                 return;
             }
 
-            // 入力CSVの必須ヘッダーを確認
-            const requiredInputHeaders = [
-                'クライアント名', '店舗名', 'フリガナ', '郵便番号', '住所', '顧客店番'
-            ];
-            const missingInputHeaders = requiredInputHeaders.filter(header => !headers.includes(header));
-            if (missingInputHeaders.length > 0) {
-                showMessage(`入力CSVに必要な列が不足しています: ${missingInputHeaders.join(', ')}`, 'error');
-                return;
-            }
-
             if (stationsData.length === 0) {
-                 showMessage('警告: 駅データが読み込まれていないため、最寄り駅と距離は取得できません。', 'warning');
+                 showMessage('警告: 駅データが読み込まれていないため、最寄り駅と距離は取得できません。CSVに緯度経度のみを追加します。', 'warning');
                  // 処理は続行可能なのでreturnしない
             }
 
+            // UIの状態を更新（処理中）
             geocodeButton.disabled = true;
             downloadCsvButton.disabled = true;
+            cancelButton.classList.remove('hidden'); // キャンセルボタンを表示
+            cancelButton.disabled = false; // キャンセルボタンを有効化
+
+            isProcessingCancelled = false; // キャンセルフラグをリセット
             showMessage('緯度経度と最寄り駅を取得中です...（時間がかかる場合があります）', 'info');
             updateProgressBar(0);
 
@@ -585,6 +590,11 @@
             let processedCount = 0;
 
             for (let i = 0; i < totalAddresses; i++) {
+                if (isProcessingCancelled) { // キャンセルフラグが立っていたら中断
+                    showMessage('処理がユーザーによってキャンセルされました。', 'warning');
+                    break; 
+                }
+
                 const row = parsedData[i];
                 const inputAddress = row[addressColumnName]; // ジオコーディングに使用する元の住所
 
@@ -599,6 +609,7 @@
                 let nearestStationNameValue = '';
                 let nearestStationDistanceValue = '';
 
+                // 緯度経度が有効な数値で、かつ駅データが読み込まれている場合にのみ最寄り駅を検索
                 if (stationsData.length > 0 && typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
                     let minDistance = Infinity;
                     let nearestStation = null;
@@ -635,21 +646,59 @@
                 }
 
                 // マッピングと変換
-                outputRowValues['企業名'] = row[INPUT_TO_OUTPUT_MAPPING['企業名']] || '';
-                outputRowValues['店舗名(漢字)'] = row[INPUT_TO_OUTPUT_MAPPING['店舗名(漢字)']] || '';
+                outputRowValues['企業コード'] = row['企業コード'] || '';
+                outputRowValues['店舗コード'] = row['店舗コード'] || '';
+                outputRowValues['ロケール'] = row['ロケール'] || '';
+                outputRowValues['店舗名(漢字)'] = row['店舗名'] || ''; // 入力CSVの「店舗名」を出力CSVの「店舗名(漢字)」に
                 
-                const furigana = row[INPUT_TO_OUTPUT_MAPPING['店舗名(カナ)']] || '';
-                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(furigana) + 'PMK'; // 半角カタカナ変換＋PMK付加
+                const furigana = row['フリガナ'] || ''; // 入力CSVの「フリガナ」を出力CSVの「店舗名(カナ)」に
+                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(furigana) + 'PMK'; 
                 
-                outputRowValues['郵便番号'] = row[INPUT_TO_OUTPUT_MAPPING['郵便番号']] || '';
-                outputRowValues['国交省住所1'] = gsiAddressTitle; // 国交省住所1はAPIから取得した整形済み住所
-                outputRowValues['顧客側店舗コード'] = row[INPUT_TO_OUTPUT_MAPPING['顧客側店舗コード']] || '';
+                outputRowValues['請求先コード1'] = row['請求先コード1'] || '';
+                outputRowValues['請求先コード2'] = row['請求先コード2'] || '';
+                outputRowValues['使用不可フラグ'] = row['使用不可フラグ'] || '';
+                outputRowValues['郵便番号'] = row['郵便番号'] || '';
+                outputRowValues['L2コード'] = row['L2コード'] || '';
+                outputRowValues['国交省住所1'] = gsiAddressTitle; // 国交省APIから取得した整形済み住所
+                outputRowValues['国交省住所2'] = row['国交省住所2'] || '';
+                outputRowValues['国交省住所補足'] = row['国交省住所補足'] || '';
+                outputRowValues['住所1'] = row['住所1'] || '';
+                outputRowValues['住所2'] = row['住所2'] || '';
+                outputRowValues['住所3'] = row['住所3'] || '';
+                outputRowValues['電話番号'] = row['電話番号'] || '';
+                outputRowValues['FAX番号'] = row['FAX番号'] || '';
+                outputRowValues['担当部門'] = row['担当部門'] || '';
+                outputRowValues['担当者役職'] = row['担当者役職'] || '';
+                outputRowValues['担当者名'] = row['担当者名'] || '';
+                outputRowValues['担当者MAIL'] = row['担当者MAIL'] || '';
+                outputRowValues['代表業態コード'] = row['代表業態コード'] || '';
+                outputRowValues['業態中分類コード'] = row['業態中分類コード'] || '';
+                outputRowValues['旧業態コード'] = row['旧業態コード'] || '';
+                outputRowValues['旧業態中分類コード'] = row['旧業態中分類コード'] || '';
+                outputRowValues['顧客側店舗コード'] = row['顧客店番'] || ''; // 入力CSVの「顧客店番」を出力CSVの「顧客側店舗コード」に
+                outputRowValues['管轄DOコード'] = row['管轄DOコード'] || '';
                 
                 outputRowValues['緯度'] = latitude;
                 outputRowValues['経度'] = longitude;
-                // outputRowValues['市区町村コード'] は削除
                 outputRowValues['鉄道最寄駅'] = nearestStationNameValue; // 最寄り駅を追加
                 outputRowValues['最寄り駅距離(km)'] = nearestStationDistanceValue; // 最寄り駅距離を追加
+
+                outputRowValues['バス最寄駅'] = row['バス最寄駅'] || '';
+                outputRowValues['添付ファイルコード'] = row['添付ファイルコード'] || '';
+                outputRowValues['ファイル名'] = row['ファイル名'] || '';
+                outputRowValues['ファイルアップロード日'] = row['ファイルアップロード日'] || '';
+                outputRowValues['SEJDO名'] = row['SEJDO名'] || '';
+                outputRowValues['免許品'] = row['免許品'] || '';
+                outputRowValues['実績年月日1'] = row['実績年月日1'] || '';
+                outputRowValues['実績作業量1'] = row['実績作業量1'] || '';
+                outputRowValues['実績年月日2'] = row['実績年月日2'] || '';
+                outputRowValues['実績作業量2'] = row['実績作業量2'] || '';
+                outputRowValues['実績年月日3'] = row['実績年月日3'] || '';
+                outputRowValues['実績作業量3'] = row['実績作業量3'] || '';
+                outputRowValues['登録日時'] = row['登録日時'] || '';
+                outputRowValues['登録ユーザID'] = row['登録ユーザID'] || '';
+                outputRowValues['更新日時'] = row['更新日時'] || '';
+                outputRowValues['更新ユーザID'] = row['更新ユーザID'] || '';
 
 
                 // CSV形式に変換してresultDataに追加
@@ -669,11 +718,30 @@
                 updateProgressBar(progress);
             }
 
-            showMessage('緯度経度と最寄り駅の取得が完了しました！', 'success');
+            // 処理完了後の状態更新
             geocodeButton.disabled = false;
-            downloadCsvButton.disabled = false;
-            updateProgressBar(100);
+            cancelButton.classList.add('hidden'); // キャンセルボタンを非表示に
+            cancelButton.disabled = true; //念のため無効化
+
+            if (!isProcessingCancelled) {
+                showMessage('緯度経度と最寄り駅の取得が完了しました！', 'success');
+                downloadCsvButton.disabled = false;
+                updateProgressBar(100);
+            } else {
+                updateProgressBar(processedCount / totalAddresses * 100); // 中断時の進捗で停止
+                // 中断メッセージは既に表示されているため、ここでは特にメッセージ更新しない
+            }
         });
+
+        // キャンセルボタンクリックイベントリスナー
+        cancelButton.addEventListener('click', () => {
+            isProcessingCancelled = true;
+            cancelButton.disabled = true; // キャンセルボタンを無効化
+            geocodeButton.disabled = true; // 処理中断中はジオコーディング開始ボタンも無効化
+            showMessage('処理をキャンセルしています...完了までお待ちください。', 'warning');
+            // ループが中断された後に、geocodeButtonは自動的に再有効化されます
+        });
+
 
         // CSVダウンロードボタンクリックイベントリスナー
         downloadCsvButton.addEventListener('click', () => {
@@ -700,6 +768,7 @@
         csvFileInput.disabled = true; // 駅データ読み込みまで無効化
         geocodeButton.disabled = true;
         downloadCsvButton.disabled = true;
+        cancelButton.classList.add('hidden'); // キャンセルボタンは初期状態で非表示
     </script>
 </body>
 </html>

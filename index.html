@@ -70,6 +70,8 @@
 </head>
 <body>
     <div class="container">
+        <!-- Version Display -->
+        <div id="appVersionDisplay" class="text-right text-gray-500 text-xs mb-2"></div>
         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">住所から緯度経度、最寄り駅を取得</h1>
 
         <div class="mb-6 bg-blue-50 p-4 rounded-lg shadow-sm">
@@ -151,6 +153,18 @@
     </div>
 
     <script>
+        // --- アプリケーションバージョン情報 ---
+        const APP_VERSION = "v1.0.0"; // ここでバージョンを管理
+
+        // HTML内のバージョン表示を更新
+        document.addEventListener('DOMContentLoaded', () => {
+            const versionDisplay = document.getElementById('appVersionDisplay');
+            if (versionDisplay) {
+                versionDisplay.textContent = `バージョン: ${APP_VERSION}`;
+            }
+        });
+
+
         // DOM要素の取得
         const csvFileInput = document.getElementById('csvFile');
         const clearFileButton = document.getElementById('clearFileButton');
@@ -202,7 +216,7 @@
             '企業名': 'クライアント名', 
             '店舗名(漢字)': '店舗名',
             '店舗名(カナ)': 'フリガナ', 
-            // '郵便番号': '郵便番号', // 住所から抽出するため、このマッピングは不要
+            // '郵便番号': '郵便番号', // 住所から抽出するため、このマッピングは不要（下の処理で設定）
             '国交省住所1': '住所', // GSI APIから取得
             '顧客側店舗コード': '顧客店番'
         };
@@ -227,6 +241,10 @@
             } else {
                 await loadCityCodesData();
                 if (cityCodesData.length > 0) cityCodesDataLoaded = true;
+                // 市区町村コードデータが少ない場合の警告
+                if (cityCodesData.length > 0 && cityCodesData.length < 1700) { // 参考：全国の市区町村数は1700以上
+                    showMessage(`警告: 市区町村コードデータは読み込まれましたが、全国の全ての市区町村が含まれていない可能性があります（現在 ${cityCodesData.length} 件）。処理しようとしている住所の市区町村が含まれているかご確認ください。`, 'warning');
+                }
             }
             
             // 全ての必須データが読み込まれたらボタンを有効化
@@ -423,8 +441,13 @@
          */
         function toHalfWidthKatakana(str) {
             if (!str) return '';
-            let tempStr = String(str).normalize('NFKC'); // ひらがな→カタカナ、全角数字→半角数字などをここで変換
+            let tempStr = String(str);
 
+            // 1. Unicode正規化 (NFKC): 全角ひらがなを全角カタカナに、全角数字を半角数字に、半角カタカナを全角カタカナに変換など
+            // 例: ﾊﾝｶｸ -> ハンカク, ｱｲｳｴｵ -> アイウエオ, ０１２ -> 012
+            tempStr = tempStr.normalize('NFKC');
+
+            // 2. 全角カタカナを半角カタカナに変換するためのマッピングテーブル
             const halfWidthMap = {
                 'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
                 'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
@@ -445,80 +468,122 @@
                 'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
                 'ヴ': 'ｳﾞ', 'ヵ': 'ｶ', 'ヶ': 'ｹ',
                 'ー': 'ｰ', // 長音符
-                '゛': 'ﾞ', '゜': 'ﾟ', // 濁点・半濁点（結合文字ではないもの）
-                '、': '､', '。': '｡', '「': '｢', '」': '｣', '・': '･' // その他の記号
+                // 記号類
+                '！': '!', '？': '?', '、': '､', '。': '｡', '「': '｢', '」': '｣', '・': '･',
+                '＠': '@', '＃': '#', '＄': '$', '％': '%', '＆': '&', '＊': '*', '＋': '+',
+                '＝': '=', '＜': '<', '＞': '>', '‘': '`', '｛': '{', '｝': '}', '｜': '|',
+                '～': '~', '￥': '\\', '＿': '_', '．': '.', '，': ',', '－': '-',
+                '０': '0', '１': '1', '２': '2', '３': '3', '４': '4', '５': '5', '６': '6', '７': '7', '８': '8', '９': '9' // 全角数字はNFKCで半角になるが、念のため
             };
 
             let converted = '';
             for (let i = 0; i < tempStr.length; i++) {
                 let char = tempStr[i];
-                // 濁点・半濁点が含まれるカタカナの特殊処理
-                // 例: "キ" + "ﾞ" = "ギ"
-                if (char === 'K' && i + 1 < tempStr.length && tempStr[i+1] === 'I') { // 例外処理の記述が複雑になるため、ここでは省略
-                     // `normalize('NFKC')` が多くのケースを処理してくれるため、
-                     // このような手動での結合文字処理は減らせるはずです。
-                }
-
-                if (halfWidthMap[char]) {
-                    converted += halfWidthMap[char];
-                } else {
-                    converted += char; // マッピングにない文字（漢字など）はそのまま
-                }
+                converted += halfWidthMap[char] || char; // マッピングがあれば変換、なければそのまま
             }
             return converted;
         }
 
 
         /**
-         * 住所文字列から郵便番号を抽出する関数。
+         * 住所文字列から直接郵便番号を抽出する関数。
          * @param {string} address - 住所文字列。
          * @returns {string} 抽出された7桁の郵便番号（ハイフンなし、ゼロ埋め）または空文字列。
          */
-        function getPostalCodeFromAddress(address) {
+        function extractPostalCodeFromAddressString(address) {
             if (!address) return '';
 
             // 全角数字と全角ハイフンを半角に変換
             let normalizedAddress = address.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             normalizedAddress = normalizedAddress.replace(/ー/g, '-');
-            console.log(`getPostalCodeFromAddress: Normalized address for postal code extraction: "${normalizedAddress}"`);
+            console.log(`extractPostalCodeFromAddressString: Normalized address for direct extraction: "${normalizedAddress}"`);
 
             // 7桁の数字（ハイフンあり/なし）の郵便番号を検索
             const postcodeRegex = /(\d{3}[-]?\d{4})/;
             const postcodeMatch = normalizedAddress.match(postcodeRegex);
-            console.log(`getPostalCodeFromAddress: Postcode regex match result:`, postcodeMatch);
+            console.log(`extractPostalCodeFromAddressString: Postcode regex match result:`, postcodeMatch);
 
             if (postcodeMatch && postcodeMatch[1]) {
                 const postalCode = postcodeMatch[1].replace(/-/g, ''); // ハイフンを除去
-                console.log(`getPostalCodeFromAddress: Extracted postal code: "${postalCode.padStart(7, '0')}"`);
+                console.log(`extractPostalCodeFromAddressString: Directly extracted postal code: "${postalCode.padStart(7, '0')}"`);
                 return postalCode.padStart(7, '0'); // 7桁にゼロ埋め
             }
-            console.log(`getPostalCodeFromAddress: No postal code found in address: "${address}"`);
+            console.log(`extractPostalCodeFromAddressString: No postal code found directly in address string: "${address}"`);
             return ''; // 見つからなければ空文字列
         }
 
-        // 都道府県名と市区町村名のみを抽出するヘルパー関数
-        function getPrefCityWardForLookup(fullAddress) {
+        /**
+         * 外部API（zipcloud）を使用して住所から郵便番号を検索する関数。
+         * @param {string} pref - 都道府県名。
+         * @param {string} city - 市区町村名。
+         * @param {string} town - 町域名（番地以下を含む場合あり）。
+         * @returns {Promise<string>} 検索された郵便番号（7桁、ゼロ埋め）または空文字列を解決するPromise。
+         */
+        async function getPostalCodeFromExternalAPI(pref, city, town) {
+            if (!pref || !city) {
+                console.warn('郵便番号検索API: 都道府県または市区町村が不足しています。');
+                return '';
+            }
+
+            const baseUrl = 'https://zipcloud.ibsnet.co.jp/api/search';
+            const queryParams = new URLSearchParams();
+            queryParams.append('address1', pref);
+            queryParams.append('address2', city);
+            if (town) {
+                queryParams.append('address3', town);
+            }
+            const apiUrl = `${baseUrl}?${queryParams.toString()}`;
+            console.log(`郵便番号検索API: Calling API with URL: ${apiUrl}`);
+
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    console.error(`郵便番号検索APIリクエスト失敗: ${response.status} ${response.statusText}`);
+                    return '';
+                }
+                const data = await response.json();
+                console.log(`郵便番号検索APIレスポンス:`, data);
+
+                if (data.results && data.results.length > 0) {
+                    const postalCode = data.results[0].zipcode;
+                    console.log(`郵便番号検索API: Found postal code: ${postalCode}`);
+                    return String(postalCode).padStart(7, '0'); // 7桁にゼロ埋め
+                } else {
+                    console.warn(`郵便番号検索API: 住所 "${pref}${city}${town}" の郵便番号が見つかりませんでした。`);
+                    return '';
+                }
+            } catch (error) {
+                console.error(`郵便番号検索API呼び出し中にエラーが発生しました:`, error);
+                return '';
+            }
+        }
+
+
+        // 都道府県名と市区町村名、残りの住所を抽出するヘルパー関数
+        function getPrefCityWardAndRemainingForLookup(fullAddress) {
             let pref = '';
             let cityWard = '';
+            let remainingAddress = fullAddress; // 残りの住所（町域以下）
 
             // 都道府県を検出 (東京都, 北海道, 京都府, 大阪府, XX県)
             const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
             const prefMatch = fullAddress.match(prefRegex);
             if (prefMatch) {
                 pref = prefMatch[0];
-                let remainingAddress = fullAddress.substring(pref.length);
+                remainingAddress = fullAddress.substring(pref.length);
 
                 // 市区町村を検出 (市, 区, 町, 村 で終わる)
-                // より多くのパターンをカバーするため、区、郡、町、村を考慮
                 const cityWardRegex = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/; 
                 const cityWardMatch = remainingAddress.match(cityWardRegex);
 
                 if (cityWardMatch) {
                     cityWard = cityWardMatch[1]; 
+                    remainingAddress = remainingAddress.substring(cityWard.length);
                 }
             }
-            return { pref, city: cityWard };
+            return { pref, city: cityWard, town: remainingAddress };
         }
+
 
         // 市区町村コードを取得する関数
         function getCityCode(address) {
@@ -526,33 +591,25 @@
                 console.warn('市区町村コードデータが読み込まれていません。市区町村コードの取得機能は利用できません。');
                 return 'データなし';
             }
-            const { pref, city } = getPrefCityWardForLookup(address);
+            const { pref, city } = getPrefCityWardAndRemainingForLookup(address); // 残りの住所は不要なので、最初の2つだけ取得
             if (!pref || !city) {
                 console.warn(`住所から都道府県または市区町村を特定できませんでした: "${address}"`);
                 return '不明';
             }
 
-            console.log(`getCityCode: Searching for Pref: "${pref}", City: "${city}"`); // デバッグログ追加
-
             // 市区町村データからコードを検索
             const found = cityCodesData.find(item => {
-                const itemPref = String(item['pref'] || '').trim(); // item['pref']がundefined/nullの場合も考慮してtrim
-                const itemCity = String(item['city'] || '').trim(); // item['city']がundefined/nullの場合も考慮してtrim
+                const itemPref = String(item['pref'] || '').trim(); 
+                const itemCity = String(item['city'] || '').trim(); 
                 
-                console.log(`getCityCode: Comparing input (Pref:"${pref}", City:"${city}") with master data entry (Pref:"${itemPref}", City:"${itemCity}", Code:"${item['code'] || 'N/A'}").`);
                 const prefMatch = itemPref === pref;
                 // 市区町村名のマッチングロジックを微調整
-                // マスターデータ側の市区町村が空でない && (完全に一致 OR マスターデータ側の市区町村で始まる)
                 const cityMatch = (itemCity && (itemCity === city || city.startsWith(itemCity))); 
-                console.log(`getCityCode: Match condition results - Pref Match: ${prefMatch}, City Match: ${cityMatch}`);
                 return prefMatch && cityMatch;
             });
-            console.log(`getCityCode: Found item from master data:`, found); // 見つかったアイテムをログ出力
 
             if (found && found['code']) { 
-                // 市区町村コードを5桁にゼロ埋め
                 const paddedCode = String(found['code']).padStart(5, '0'); 
-                console.log(`住所 "${address}" -> 検出都道府県: "${pref}", 市区町村: "${city}", コード: "${paddedCode}"`);
                 return paddedCode;
             } else {
                 console.warn(`住所 "${address}" (都道府県: "${pref}", 市区町村: "${city}") に対応する市区町村コードが見つかりません。`);
@@ -569,11 +626,12 @@
 
             const encodedAddress = encodeURIComponent(address);
             const apiUrl = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodedAddress}`;
+            console.log(`国土地理院API: Calling API with URL: ${apiUrl}`);
 
             try {
                 const response = await fetch(apiUrl);
                 const data = await response.json();
-                console.log(`住所 "${address}" の国土地理院APIレスポンス:`, data); // GSI APIレスポンスをログ出力
+                console.log(`国土地理院APIレスポンス (${address}):`, data);
 
                 if (!response.ok) {
                     console.error(`国土地理院APIリクエスト失敗: ${response.status} ${response.statusText} for address: ${address}`);
@@ -692,9 +750,6 @@
                 console.log('市区町村コードデータ読み込み完了:', cityCodesData.length, '件');
                 if (cityCodesData.length > 0) {
                     showMessage(`市区町村コードデータ ${cityCodesData.length} 件を読み込みました。`); // タイプを info に戻し、件数を明示
-                    if (cityCodesData.length < 1700) { // 参考：全国の市区町村数は1700以上
-                        showMessage(`警告: 市区町村コードデータは読み込まれましたが、全国の全ての市区町村が含まれていない可能性があります（現在 ${cityCodesData.length} 件）。処理しようとしている住所の市区町村が含まれているかご確認ください。`, 'warning');
-                    }
                 } else {
                     showMessage('市区町村コードデータは読み込まれましたが、有効なデータが含まれていませんでした。CSVファイルの内容を確認してください。', 'error');
                 }
@@ -813,8 +868,17 @@
                 }
 
                 // --- 郵便番号の取得 ---
-                // inputAddressから郵便番号を抽出
-                let postalCodeValue = getPostalCodeFromAddress(inputAddress);
+                let postalCodeValue = extractPostalCodeFromAddressString(inputAddress); // まず住所文字列から抽出を試みる
+
+                if (!postalCodeValue) { // 住所文字列から見つからなかった場合のみ外部APIを叩く
+                    const { pref, city, town } = getPrefCityWardAndRemainingForLookup(normalizedAddress);
+                    postalCodeValue = await getPostalCodeFromExternalAPI(pref, city, town);
+                }
+                
+                // 郵便番号が見つからなければ「不明」または空文字列にする
+                if (!postalCodeValue) {
+                    postalCodeValue = '不明'; 
+                }
 
                 // --- 新しい出力行のデータを構築 ---
                 const outputRowValues = {};
@@ -841,10 +905,9 @@
                 outputRowValues['経度'] = longitude;
                 outputRowValues['鉄道最寄駅'] = nearestStationNameValue;
                 outputRowValues['市区町村コード'] = cityCodeValue;
-                outputRowValues['郵便番号'] = postalCodeValue; // 住所から抽出した郵便番号を適用
+                outputRowValues['郵便番号'] = postalCodeValue; // 住所から抽出・検索した郵便番号を適用
 
                 // 店舗名(カナ)の変換はここで強制的に行う
-                // INPUT_TO_OUTPUT_MAPPINGから 'フリガナ' が取得されなくても、元の `row` から直接参照
                 const originalKanaValue = row['フリガナ'] || row['店舗名(カナ)'] || row['店舗名'] || ''; // 複数の可能性を考慮
                 outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(String(originalKanaValue)) + 'PMK';
 
@@ -910,7 +973,8 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'データ_変換済み.csv'; // ダウンロードファイル名を変更
+            // ダウンロードファイル名にバージョンを付加
+            a.download = `データ_変換済み_${APP_VERSION}.csv`; 
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

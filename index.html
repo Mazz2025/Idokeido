@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.0.0"; // ここでバージョンを管理
+        const APP_VERSION = "v1.0.3"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -384,6 +384,7 @@
 
         /**
          * 住所の「1-2-3」のような表記を「1丁目2番3号」のように変換するヘルパー関数。
+         * この関数は、主に国土地理院APIでの緯度経度取得の精度を向上させるために使用されます。
          *
          * @param {string} address - 元の住所文字列。
          * @returns {string} 変換された住所文字列。
@@ -396,40 +397,27 @@
             // 例: "西葛西3丁目15-12" -> "西葛西3丁目15番12号"
             // このルールを最優先することで、丁目以降の番地を正確に処理し、重複変換を防ぐ。
             tempAddress = tempAddress.replace(/(\d+丁目)(\d+)[-ー](\d+)(?![番号])/g, (match, p1, p2, p3) => {
-                const result = `${p1}${p2}番${p3}号`;
-                console.log(`normalizeAddressHyphens: Applied Rule 1 (丁目-番-号): "${match}" -> "${result}"`);
-                return result;
+                return `${p1}${p2}番${p3}号`;
             });
-            console.log(`normalizeAddressHyphens: After Rule 1 (丁目-番-号): "${tempAddress}"`);
-
 
             // Rule 2: 一般的な"数字-数字-数字"パターンを"数字丁目数字番数字号"に変換
             // 例: "1-2-3" -> "1丁目2番3号"
             // 既に「丁目」「番」「号」が付いている部分には適用しない (ネガティブ後方参照)
-            // Note: JavaScript regex does not natively support negative lookbehind for arbitrary length,
-            // so we rely on explicit checks for preceding non-address characters.
             tempAddress = tempAddress.replace(/(?<![丁番号])(\d+)[-ー](\d+)[-ー](\d+)(?![丁番号])/g, (match, p1, p2, p3) => {
-                const result = `${p1}丁目${p2}番${p3}号`;
-                console.log(`normalizeAddressHyphens: Applied Rule 2 (general X-Y-Z): "${match}" -> "${result}"`);
-                return result;
+                return `${p1}丁目${p2}番${p3}号`;
             });
-            console.log(`normalizeAddressHyphens: After Rule 2 (general X-Y-Z): "${tempAddress}"`);
-
 
             // Rule 3: 一般的な"数字-数字"パターンを"数字番数字号"に変換
             // 例: "15-12" (丁目などが先行しない場合) -> "15番12号"
             // 既に「丁目」「番」「号」が付いている部分には適用しない (ネガティブ後方参照)
             tempAddress = tempAddress.replace(/(?<![丁番号])(\d+)[-ー](\d+)(?![丁番号])/g, (match, p1, p2) => {
-                const result = `${p1}番${p2}号`;
-                console.log(`normalizeAddressHyphens: Applied Rule 3 (general X-Y): "${match}" -> "${result}"`);
-                return result;
+                return `${p1}番${p2}号`;
             });
-            console.log(`normalizeAddressHyphens: After Rule 3 (general X-Y): "${tempAddress}"`);
             
             // Rule 4: 最後に、数字の後に「号」がない場合に「号」を追加 (文末に限定)
             // 例: "1番2" -> "1番2号", "3丁目15番12" -> "3丁目15番12号"
             tempAddress = tempAddress.replace(/(\d+)(?![丁番号])$/, '$1号');
-            console.log(`normalizeAddressHyphens: After Rule 4 (final 号): "${tempAddress}"`);
+            console.log(`normalizeAddressHyphens: Final normalized address: "${tempAddress}"`);
 
             return tempAddress;
         }
@@ -472,7 +460,7 @@
                 '！': '!', '？': '?', '、': '､', '。': '｡', '「': '｢', '」': '｣', '・': '･',
                 '＠': '@', '＃': '#', '＄': '$', '％': '%', '＆': '&', '＊': '*', '＋': '+',
                 '＝': '=', '＜': '<', '＞': '>', '‘': '`', '｛': '{', '｝': '}', '｜': '|',
-                '～': '~', '￥': '\\', '＿': '_', '．': '.', '，': ',', '－': '-',
+                '～': '~', '￥': '\\', '＿': '_', '．': '.', '！': '！', '，': ',', '－': '-',
                 '０': '0', '１': '1', '２': '2', '３': '3', '４': '4', '５': '5', '６': '6', '７': '7', '８': '8', '９': '9' // 全角数字はNFKCで半角になるが、念のため
             };
 
@@ -516,54 +504,82 @@
          * 外部API（zipcloud）を使用して住所から郵便番号を検索する関数。
          * @param {string} pref - 都道府県名。
          * @param {string} city - 市区町村名。
-         * @param {string} town - 町域名（番地以下を含む場合あり）。
+         * @param {string} town - 町域名（番地以下を含む場合あり、API送信時には精製される）。
          * @returns {Promise<string>} 検索された郵便番号（7桁、ゼロ埋め）または空文字列を解決するPromise。
          */
         async function getPostalCodeFromExternalAPI(pref, city, town) {
-            if (!pref || !city) {
-                console.warn('郵便番号検索API: 都道府県または市区町村が不足しています。');
-                return '';
+            if (!pref || !city || pref === '不明' || city === '不明') {
+                console.warn(`郵便番号検索API: 都道府県または市区町村が不明なため、API呼び出しをスキップします。Pref: "${pref}", City: "${city}"`);
+                return ''; // 無効な入力の場合はAPIを叩かない
             }
 
             const baseUrl = 'https://zipcloud.ibsnet.co.jp/api/search';
-            const queryParams = new URLSearchParams();
-            queryParams.append('address1', pref);
-            queryParams.append('address2', city);
-            if (town) {
-                queryParams.append('address3', town);
-            }
-            const apiUrl = `${baseUrl}?${queryParams.toString()}`;
-            console.log(`郵便番号検索API: Calling API with URL: ${apiUrl}`);
+            let postalCode = '';
 
+            // Attempt 1: Try with cleaned town (address3)
+            // 番地、号、丁目、ハイフン結合の数字などを除去し、純粋な町名に近づける
+            let cleanedTownForAPI = town.replace(/(\d+丁目)|(\d+番地)|(\d+号)|(\d+[-ー]\d+)/g, '').trim();
+            // 括弧内の情報も除去 (例: (その他) など)
+            cleanedTownForAPI = cleanedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
+            
+            console.log(`郵便番号検索API (Attempt 1): Pref: "${pref}", City: "${city}", Town for API: "${cleanedTownForAPI}"`);
             try {
-                const response = await fetch(apiUrl);
-                if (!response.ok) {
-                    console.error(`郵便番号検索APIリクエスト失敗: ${response.status} ${response.statusText}`);
-                    return '';
+                const queryParams1 = new URLSearchParams();
+                queryParams1.append('address1', pref);
+                queryParams1.append('address2', city);
+                if (cleanedTownForAPI) {
+                    queryParams1.append('address3', cleanedTownForAPI);
                 }
-                const data = await response.json();
-                console.log(`郵便番号検索APIレスポンス:`, data);
+                const apiUrl1 = `${baseUrl}?${queryParams1.toString()}`;
+                const response1 = await fetch(apiUrl1);
+                const data1 = await response1.json();
+                console.log(`郵便番号検索API (Attempt 1) Response:`, data1);
 
-                if (data.results && data.results.length > 0) {
-                    const postalCode = data.results[0].zipcode;
-                    console.log(`郵便番号検索API: Found postal code: ${postalCode}`);
-                    return String(postalCode).padStart(7, '0'); // 7桁にゼロ埋め
+                if (response1.ok && data1.status === 200 && data1.results && data1.results.length > 0) {
+                    postalCode = String(data1.results[0].zipcode).padStart(7, '0');
+                    console.log(`郵便番号検索API (Attempt 1): Found postal code: ${postalCode}`);
+                    return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API: 住所 "${pref}${city}${town}" の郵便番号が見つかりませんでした。`);
-                    return '';
+                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (cleaned: "${cleanedTownForAPI}"). Retrying without town...`);
                 }
             } catch (error) {
-                console.error(`郵便番号検索API呼び出し中にエラーが発生しました:`, error);
-                return '';
+                console.error(`郵便番号検索API (Attempt 1) calling error:`, error);
             }
+
+            // Attempt 2: Fallback - Try without town (address3) if Attempt 1 failed
+            console.log(`郵便番号検索API (Attempt 2 - Fallback): Pref: "${pref}", City: "${city}" (without town)`);
+            try {
+                const queryParams2 = new URLSearchParams();
+                queryParams2.append('address1', pref);
+                queryParams2.append('address2', city);
+                const apiUrl2 = `${baseUrl}?${queryParams2.toString()}`;
+                const response2 = await fetch(apiUrl2);
+                const data2 = await response2.json();
+                console.log(`郵便番号検索API (Attempt 2) Response:`, data2);
+
+                if (response2.ok && data2.status === 200 && data2.results && data2.results.length > 0) {
+                    postalCode = String(data2.results[0].zipcode).padStart(7, '0');
+                    console.log(`郵便番号検索API (Attempt 2): Found postal code: ${postalCode}`);
+                    return postalCode;
+                } else {
+                    console.warn(`郵便番号検索API (Attempt 2): No results or API error for "${pref}${city}" (fallback)`);
+                }
+            } catch (error) {
+                console.error(`郵便番号検索API (Attempt 2) calling error:`, error);
+            }
+
+            console.warn(`郵便番号検索API: 最終的に住所 "${pref}${city}${town}" の郵便番号は見つかりませんでした。`);
+            return '';
         }
 
 
-        // 都道府県名と市区町村名、残りの住所を抽出するヘルパー関数
+        // 都道府県名と市区町村名、町域を抽出するヘルパー関数
+        // この関数は、郵便番号検索APIに渡すための「純粋な町名」を抽出することを目的としています。
         function getPrefCityWardAndRemainingForLookup(fullAddress) {
             let pref = '';
             let cityWard = '';
-            let remainingAddress = fullAddress; // 残りの住所（町域以下）
+            let town = '';
+            let remainingAddress = fullAddress; // 都道府県、市区町村を除いた残り
 
             // 都道府県を検出 (東京都, 北海道, 京都府, 大阪府, XX県)
             const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
@@ -571,17 +587,36 @@
             if (prefMatch) {
                 pref = prefMatch[0];
                 remainingAddress = fullAddress.substring(pref.length);
-
-                // 市区町村を検出 (市, 区, 町, 村 で終わる)
-                const cityWardRegex = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/; 
-                const cityWardMatch = remainingAddress.match(cityWardRegex);
-
-                if (cityWardMatch) {
-                    cityWard = cityWardMatch[1]; 
-                    remainingAddress = remainingAddress.substring(cityWard.length);
-                }
             }
-            return { pref, city: cityWard, town: remainingAddress };
+
+            // 市区町村を検出 (市, 区, 町, 村 で終わる)
+            const cityWardRegex = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/; 
+            const cityWardMatch = remainingAddress.match(cityWardRegex);
+
+            if (cityWardMatch) {
+                cityWard = cityWardMatch[1]; 
+                remainingAddress = remainingAddress.substring(cityWard.length);
+            }
+
+            // 残りの住所から町域（town）を抽出する
+            // 郵便番号検索API向けに、町名のみを抽出する（番地や号は除外）
+            // 例: "西二十三番町29番20号" -> "西二十三番町"
+            // 例: "丸の内1丁目1番地1号" -> "丸の内" (丁目もAPI向けには除去)
+            // 数字や「番地」「号」「丁目」などの前で区切る
+            const townMatch = remainingAddress.match(/^(.+?)(?=\d+[番丁号]?|$)/); 
+            if (townMatch && townMatch[1]) {
+                town = townMatch[1].trim();
+                // さらに、不要な括弧内の情報などを削除してクリーンにする
+                town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
+                // 町名に「丁目」が含まれる場合も、APIによっては不要な場合があるため除去を試みる
+                town = town.replace(/(\d+丁(?:目)?)$/, '').trim(); // 例: "丸の内1丁目" -> "丸の内"
+            } else {
+                town = remainingAddress.trim(); // 数字部分がない場合は全体を町域とする
+                town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
+            }
+            
+            console.log(`getPrefCityWardAndRemainingForLookup: Parsed - Pref: "${pref}", City: "${cityWard}", Town: "${town}" (for API)`);
+            return { pref, city: cityWard, town: town };
         }
 
 
@@ -591,9 +626,26 @@
                 console.warn('市区町村コードデータが読み込まれていません。市区町村コードの取得機能は利用できません。');
                 return 'データなし';
             }
-            const { pref, city } = getPrefCityWardAndRemainingForLookup(address); // 残りの住所は不要なので、最初の2つだけ取得
-            if (!pref || !city) {
-                console.warn(`住所から都道府県または市区町村を特定できませんでした: "${address}"`);
+            // 住所から都道府県と市区町村のみを抽出（郵便番号検索APIの町域抽出とは異なるロジック）
+            let prefForCityCode = '';
+            let cityForCityCode = '';
+            let tempAddress = address;
+
+            const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
+            const prefMatch = tempAddress.match(prefRegex);
+            if (prefMatch) {
+                prefForCityCode = prefMatch[0];
+                tempAddress = tempAddress.substring(prefForCityCode.length);
+            }
+
+            const cityWardRegex = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/; 
+            const cityWardMatch = tempAddress.match(cityWardRegex);
+            if (cityWardMatch) {
+                cityForCityCode = cityWardMatch[1]; 
+            }
+
+            if (!prefForCityCode || !cityForCityCode) {
+                console.warn(`住所から都道府県または市区町村を特定できませんでした（市区町村コード検索用）: "${address}"`);
                 return '不明';
             }
 
@@ -602,9 +654,8 @@
                 const itemPref = String(item['pref'] || '').trim(); 
                 const itemCity = String(item['city'] || '').trim(); 
                 
-                const prefMatch = itemPref === pref;
-                // 市区町村名のマッチングロジックを微調整
-                const cityMatch = (itemCity && (itemCity === city || city.startsWith(itemCity))); 
+                const prefMatch = itemPref === prefForCityCode;
+                const cityMatch = (itemCity && (itemCity === cityForCityCode || cityForCityCode.startsWith(itemCity))); 
                 return prefMatch && cityMatch;
             });
 
@@ -612,7 +663,7 @@
                 const paddedCode = String(found['code']).padStart(5, '0'); 
                 return paddedCode;
             } else {
-                console.warn(`住所 "${address}" (都道府県: "${pref}", 市区町村: "${city}") に対応する市区町村コードが見つかりません。`);
+                console.warn(`住所 "${address}" (都道府県: "${prefForCityCode}", 市区町村: "${cityForCityCode}") に対応する市区町村コードが見つかりません。`);
                 return '不明';
             }
         }
@@ -755,9 +806,6 @@
                 }
 
             } catch (error) {
-                console.error('市区町村コードデータ読み込み中にエラー:', error);
-                showMessage(`市区町村コードデータを読み込めませんでした: ${error.message} URLまたはネットワーク接続を確認してください。`, 'error');
-                cityCodesData = [];
             }
         }
 
@@ -868,11 +916,14 @@
                 }
 
                 // --- 郵便番号の取得 ---
-                let postalCodeValue = extractPostalCodeFromAddressString(inputAddress); // まず住所文字列から抽出を試みる
+                let postalCodeValue = extractPostalCodeFromAddressString(inputAddress); // まず住所文字列から直接抽出を試みる
 
-                if (!postalCodeValue) { // 住所文字列から見つからなかった場合のみ外部APIを叩く
+                if (!postalCodeValue || postalCodeValue === '不明') { // 住所文字列から見つからなかった、または不明だった場合のみ外部APIを叩く
                     const { pref, city, town } = getPrefCityWardAndRemainingForLookup(normalizedAddress);
-                    postalCodeValue = await getPostalCodeFromExternalAPI(pref, city, town);
+                    // prefとcityが取得できた場合のみ外部APIを呼ぶ
+                    if (pref && city && pref !== '不明' && city !== '不明') { // 市区町村コードが正しく出力されている前提
+                        postalCodeValue = await getPostalCodeFromExternalAPI(pref, city, town);
+                    }
                 }
                 
                 // 郵便番号が見つからなければ「不明」または空文字列にする

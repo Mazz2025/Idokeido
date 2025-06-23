@@ -92,7 +92,9 @@
                 注: 駅データのURLは、このHTMLコード内の `stationsDataUrl` 変数を、お客様がGitHubにアップロードしたGeoJSONファイルのRaw URLに置き換える必要があります。国土数値情報からダウンロードしたGeoJSONファイルを直接利用できますが、データ量が多い場合、読み込みに時間がかかることがあります。
             </p>
             <p class="text-red-600 text-sm mt-2 font-bold">
-                注: 市区町村コードデータのURLは、このHTMLコード内の `cityCodesDataUrl` 変数を、お客様がGitHubにアップロードした`city-codes.csv`ファイルのRaw URLに置き換える必要があります。
+                **★重要: 市区町村コードデータのURLを貼り付けてください★**<br>
+                このHTMLコード内の `cityCodesDataUrl` 変数を、お客様がGitHubにアップロードした`city-codes.csv`ファイルのRaw URLに置き換える必要があります。
+                現在の値は `YOUR_RAW_CITY_CODES_CSV_URL_HERE` です。
             </p>
         </div>
 
@@ -209,8 +211,8 @@
             }
 
             // 市区町村コードデータ読み込み
-            if (!cityCodesDataUrl.startsWith('http')) {
-                showMessage('警告: 市区町村コードデータのURLが設定されていません。市区町村コードの取得機能は利用できません。', 'error');
+            if (!cityCodesDataUrl.startsWith('http') || cityCodesDataUrl === 'YOUR_RAW_CITY_CODES_CSV_URL_HERE') { // ★変更点: プレースホルダーのチェックを追加
+                showMessage('警告: 市区町村コードデータのURLが設定されていません。市区町村コードの取得機能は利用できません。コード内の `cityCodesDataUrl` 変数を正しいURLに置き換えてください。', 'error');
             } else {
                 await loadCityCodesData();
                 if (cityCodesData.length > 0) cityCodesDataLoaded = true;

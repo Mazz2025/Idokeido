@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>住所から緯度経度と市区町村コードを取得</title>
+    <title>住所から緯度経度、最寄り駅を取得</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -62,26 +62,26 @@
 </head>
 <body>
     <div class="container">
-        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">住所から緯度経度と市区町村コードを取得</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">住所から緯度経度、最寄り駅を取得</h1>
 
         <div class="mb-6 bg-blue-50 p-4 rounded-lg shadow-sm">
             <h2 class="text-xl font-semibold text-blue-800 mb-3">はじめに</h2>
             <p class="text-gray-700 mb-2">
-                このツールは、CSVファイル内の住所情報から緯度、経度、そして**市区町村コード**を取得し、新しいCSVファイルとして出力します。
+                このツールは、CSVファイル内の住所情報から緯度、経度、**最寄り駅とその距離**を取得し、新しいCSVファイルとして出力します。
             </p>
             <p class="text-gray-700 font-medium">
                 <span class="text-red-600 font-bold">重要:</span> Google スプレッドシートをご利用の場合、「ファイル」>「ダウンロード」>「カンマ区切り形式（.csv）」でCSVファイルをダウンロードしてからアップロードしてください。
             </p>
             <p class="text-gray-700 text-sm mt-3">
-                <span class="font-bold">【APIと市区町村コードについて】</span><br>
+                <span class="font-bold">【APIと駅データについて】</span><br>
                 本ツールは、緯度経度の取得には国土地理院のAPIを利用します。<br>
-                市区町村コードの取得には、**外部のCSVマスターデータ**を読み込み、住所と照合します。このマスターデータは、**お客様が指定するURL**から読み込まれます。<br>
+                最寄り駅の検索には、お客様がGitHubにアップロードした**GeoJSON形式の駅マスターデータ**を使用します。<br>
                 住所が「1-2-3」のように入力されている場合、API呼び出し前に「1丁目2番3号」のように**自動的に変換**して取得を試みます。<br>
-                マスターデータでの照合ができない場合やAPIエラーの場合は「不明」と表示されます。<br>
-                実行後、ブラウザのF12キーで開発者ツールを開き、[Console]タブをご確認ください。APIレスポンスやマスターデータ検索の詳細なログが表示されます。
+                データが見つからない場合やAPIエラーの場合は「不明」または空欄と表示されます。<br>
+                実行後、ブラウザのF12キーで開発者ツールを開き、[Console]タブをご確認ください。APIレスポンスや駅データ検索の詳細なログが表示されます。
             </p>
             <p class="text-red-600 text-sm mt-2 font-bold">
-                注: マスターデータのURLは、このHTMLコード内の `masterDataUrl` 変数を、お客様がGitHubにアップロードしたCSVファイルのRaw URLに置き換える必要があります。
+                注: 駅データのURLは、このHTMLコード内の `stationsDataUrl` 変数を、お客様がGitHubにアップロードしたGeoJSONファイルのRaw URLに置き換える必要があります。国土数値情報からダウンロードしたGeoJSONファイルを直接利用できますが、データ量が多い場合、読み込みに時間がかかることがあります。
             </p>
         </div>
 
@@ -110,7 +110,7 @@
         </div>
 
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
-            <button id="geocodeButton" class="btn btn-primary flex-1" disabled>緯度経度とコードを取得</button>
+            <button id="geocodeButton" class="btn btn-primary flex-1" disabled>緯度経度と最寄り駅を取得</button>
             <button id="downloadCsvButton" class="btn btn-success flex-1" disabled>CSVをダウンロード</button>
         </div>
 
@@ -137,28 +137,28 @@
         const messageText = document.getElementById('messageText');
         const progressBarContainer = document.getElementById('progressBarContainer');
         const progressBar = document.getElementById('progressBar');
-        const progressText = document.getElementById('progressText');
         const headerDisplay = document.getElementById('headerDisplay');
         const parsedHeadersText = document.getElementById('parsedHeaders');
 
         let parsedData = []; // パースされたCSVデータを保持
         let headers = [];    // CSVヘッダーを保持
-        let resultData = []; // 緯度経度とコードを追加した結果データを保持
-        let municipalMasterData = []; // 外部から読み込むマスターデータを保持
+        let resultData = []; // 緯度経度と最寄り駅を追加した結果データを保持
+        let stationsData = []; // 駅マスターデータを保持
 
-        // --- マスターデータのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
-        // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/municipal_codes.csv'
-        // GitHubにアップロードした municipal_codes.csv の「Raw」ボタンをクリックして表示されるURLを正確に貼り付けてください。
-        const masterDataUrl = 'YOUR_RAW_MASTER_DATA_CSV_URL_HERE'; 
+        // --- 駅データのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
+        // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/N02-20_Station.geojson'
+        // GitHubにアップロードした N02-20_Station.geojson の「Raw」ボタン（または三点リーダーメニューの「Raw file content」をクリックして開いた新しいタブのURL）を正確に貼り付けてください。
+        const stationsDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/main/N02-20_Station.geojson'; 
 
         // --- 出力CSVファイルの最終的なヘッダー順とマッピング ---
         const OUTPUT_HEADERS = [
             '企業コード', '店舗コード', 'ロケール', '店舗名(漢字)', '店舗名(カナ)', '請求先コード1',
-            '請求先コード2', '使用不可フラグ', '郵便番号', '市区町村コード', 'L2コード', '国交省住所1',
+            '請求先コード2', '使用不可フラグ', '郵便番号', 'L2コード', '国交省住所1', // 市区町村コードを削除
             '国交省住所2', '国交省住所補足', '住所1', '住所2', '住所3', '電話番号', 'FAX番号',
             '担当部門', '担当者役職', '担当者名', '担当者MAIL', '代表業態コード', '業態中分類コード',
             '旧業態コード', '旧業態中分類コード', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
-            '鉄道最寄駅', 'バス最寄駅', '添付ファイルコード', 'ファイル名', 'ファイルアップロード日',
+            '鉄道最寄駅', '最寄り駅距離(km)', // 最寄り駅と距離を追加
+            'バス最寄駅', '添付ファイルコード', 'ファイル名', 'ファイルアップロード日',
             'SEJDO名', '免許品', '実績年月日1', '実績作業量1', '実績年月日2', '実績作業量2',
             '実績年月日3', '実績作業量3', '登録日時', '登録ユーザID', '更新日時', '更新ユーザID'
         ];
@@ -166,7 +166,7 @@
         // --- 入力CSVと出力CSVのマッピング (特定の変換が必要なもののみ) ---
         // key: 出力ヘッダー名, value: 入力CSVのヘッダー名または特殊な処理
         const INPUT_TO_OUTPUT_MAPPING = {
-            '企業名': 'クライアント名', // 'クライアント名'は'企業名'として最初の列に出力
+            '企業名': 'クライアント名', 
             '店舗名(漢字)': '店舗名',
             '店舗名(カナ)': 'フリガナ', // 半角カタカナ変換＋PMK付加
             '郵便番号': '郵便番号',
@@ -175,62 +175,27 @@
         };
 
 
-        // アプリ起動時にマスターデータを読み込む
+        // アプリ起動時にマスターデータ（駅データ）を読み込む
         window.onload = async () => {
-            if (masterDataUrl === 'YOUR_RAW_MASTER_DATA_CSV_URL_HERE' || !masterDataUrl.startsWith('http')) {
-                showMessage('警告: 市区町村コードのマスターデータのURLが設定されていません。コードが「不明」になる可能性があります。コード内の `masterDataUrl` 変数を正しいURLに置き換えてください。', 'error');
+            if (stationsDataUrl === 'YOUR_RAW_STATIONS_GEOJSON_URL_HERE' || !stationsDataUrl.startsWith('http')) {
+                showMessage('警告: 駅データのURLが設定されていません。最寄り駅検索機能は利用できません。コード内の `stationsDataUrl` 変数を正しいURLに置き換えてください。', 'error');
                 csvFileInput.disabled = false;
-                geocodeButton.disabled = false; 
+                geocodeButton.disabled = true; // 駅データがないと最寄り駅検索ができないため無効化
                 return;
             }
 
-            await loadMunicipalMasterData();
-            // マスターデータが読み込まれたら、CSVアップロードとジオコーディングボタンを有効にする
-            if (municipalMasterData.length > 0) {
+            await loadStationsData();
+            // 駅データが読み込まれたら、CSVアップロードとジオコーディングボタンを有効にする
+            if (stationsData.length > 0) {
                 showMessage('アプリが起動しました。CSVファイルをアップロードしてください。');
                 csvFileInput.disabled = false;
-                geocodeButton.disabled = false; // マスターデータがなくても緯度経度検索は可能なので、ボタンは有効にしておく
+                geocodeButton.disabled = false; 
             } else {
-                showMessage('市区町村コードのマスターデータを読み込めませんでした。コード検索は利用できません。ネットワーク接続またはURLを確認してください。', 'error');
+                showMessage('駅データを読み込めませんでした。最寄り駅検索機能は利用できません。ネットワーク接続またはURLを確認してください。', 'error');
                 csvFileInput.disabled = false;
-                geocodeButton.disabled = false; // 緯度経度検索は可能
+                geocodeButton.disabled = true; // 駅データがないと最寄り駅検索ができないため無効化
             }
         };
-
-        // マスターデータを外部から読み込む関数
-        async function loadMunicipalMasterData() {
-            showMessage('市区町村コードのマスターデータを読み込み中...', 'info');
-            try {
-                const response = await fetch(masterDataUrl);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch master data: ${response.status} ${response.statusText}`);
-                }
-                const csvText = await response.text();
-                // マスターデータCSVをパース (code, pref, city の3列を想定)
-                const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-                if (lines.length > 1) { // ヘッダー行とデータ行があることを確認
-                    const masterHeaders = lines[0].split(',').map(h => h.trim());
-                    municipalMasterData = lines.slice(1).map(line => {
-                        const values = line.split(',');
-                        const row = {};
-                        masterHeaders.forEach((header, i) => {
-                            row[header] = values[i] ? values[i].trim() : '';
-                        });
-                        return row;
-                    });
-                    console.log('マスターデータ読み込み完了:', municipalMasterData);
-                    showMessage(`マスターデータ ${municipalMasterData.length} 件を読み込みました。`);
-                } else {
-                    showMessage('マスターデータCSVが空か、形式が不正です。', 'error');
-                    municipalMasterData = [];
-                }
-            } catch (error) {
-                console.error('マスターデータ読み込みエラー:', error);
-                showMessage('マスターデータを読み込めませんでした。URLが正しいか、CORSが許可されているか確認してください。', 'error');
-                municipalMasterData = [];
-            }
-        }
-
 
         // メッセージ表示関数
         function showMessage(text, type = 'info') {
@@ -268,7 +233,13 @@
                 try {
                     parseCsv(text);
                     showMessage('CSVファイルが読み込まれました。');
-                    geocodeButton.disabled = false;
+                    // 駅データが読み込まれていればボタンを有効に
+                    if (stationsData.length > 0) {
+                         geocodeButton.disabled = false;
+                    } else {
+                         showMessage('駅データが読み込まれていないため、最寄り駅検索はできません。', 'warning');
+                         geocodeButton.disabled = true;
+                    }
                     downloadCsvButton.disabled = true; // 新しいファイルを読み込んだらダウンロードボタンを無効化
                     progressBarContainer.classList.add('hidden'); // プログレスバーをリセット
                     headerDisplay.classList.remove('hidden'); // ヘッダー表示を常に表示
@@ -300,8 +271,8 @@
             geocodeButton.disabled = true; // クリアしたらジオコーディングボタンも無効化
             downloadCsvButton.disabled = true;
             progressBarContainer.classList.add('hidden'); // プログレスバーを隠す
-            // マスターデータが読み込まれている場合はジオコーディングボタンを再度有効にする
-            if (municipalMasterData.length > 0) {
+            // 駅データが読み込まれている場合はジオコーディングボタンを再度有効にする
+            if (stationsData.length > 0) {
                 geocodeButton.disabled = false;
                 showMessage('ファイルの選択がクリアされました。新しいCSVファイルをアップロードしてください。');
             }
@@ -391,12 +362,13 @@
               .replace(/バ/g, 'ﾊﾞ').replace(/ビ/g, 'ﾋﾞ').replace(/ブ/g, 'ﾌﾞ').replace(/ベ/g, 'ﾍﾞ').replace(/ボ/g, 'ﾎﾞ')
               .replace(/パ/g, 'ﾊﾟ').replace(/ピ/g, 'ﾋﾟ').replace(/プ/g, 'ﾌﾟ').replace(/ペ/g, 'ﾍﾟ').replace(/ポ/g, 'ﾎﾟ')
               .replace(/ァ/g, 'ｧ').replace(/ィ/g, 'ｨ').replace(/ゥ/g, 'ｩ').replace(/ェ/g, 'ｪ').replace(/ォ/g, 'ｫ')
-              .replace(/ャ/g, 'ｬ').replace(/ュ/g, 'ｭ').replace(/ョ/g, 'ｮ').replace(/ッ/g, 'ｯ')
+              .replace(/ャ/g, 'ｬ').replace(/ュ/g, 'ｭ').replace(/ョ/g, 'ｮ').replace(/ッ/g, 'ｯ') 
               .replace(/ー/g, 'ｰ'); // 長音符
         }
 
 
         // 都道府県名と市区町村名のみを抽出するヘルパー関数
+        // (この関数は市区町村コード検索の名残ですが、最寄り駅検索では直接使用されません)
         function getPrefCityWardForLookup(fullAddress) {
             let pref = '';
             let cityWard = '';
@@ -447,7 +419,7 @@
                     const gsiAddressTitle = data[0].properties ? data[0].properties.title : ''; // 国交省住所1用
                     return { latitude, longitude, gsiAddressTitle };
                 } else {
-                    console.warn(`住所 "${address}" の緯度経度または国交省住所が見つかりませんでした（国土地理院APIレスポンスデータ不足）。`);
+                    console.warn(`住所 "${address}" の緯度経度または国交省住所が見つかりませんでした（APIレスポンスデータ不足）。`);
                     return { latitude: '見つかりません', longitude: '見つかりません', gsiAddressTitle: '見つかりません' };
                 }
             } catch (error) {
@@ -456,39 +428,57 @@
             }
         }
 
-        // マスターデータから市区町村コードを取得する関数
-        function getMunicipalCodeFromMaster(address) {
-            if (municipalMasterData.length === 0) {
-                console.warn('市区町村マスターデータが読み込まれていません。');
-                return '不明 (マスターデータなし)';
-            }
-
-            const { pref, city } = getPrefCityWardForLookup(address);
-            let foundCode = '不明';
-            let bestMatchLength = 0;
-
-            if (!pref || !city) {
-                console.warn(`住所 "${address}" から都道府県名または市区町村名が抽出できませんでした。`);
-                return '不明';
-            }
-
-            // 完全一致を優先して検索
-            for (const item of municipalMasterData) {
-                const fullCityNameInMaster = item.pref + item.city;
-                const searchTarget = pref + city; // 検索対象となる住所の都道府県+市区町村部分
-
-                if (searchTarget.startsWith(fullCityNameInMaster) && fullCityNameInMaster.length > bestMatchLength) {
-                    foundCode = item.code;
-                    bestMatchLength = fullCityNameInMaster.length;
-                    console.log(`住所 "${address}" からマスターデータにマッチしました: ${item.pref}${item.city} -> ${item.code}`);
+        // 駅データを外部から読み込む関数 (GeoJSON対応)
+        async function loadStationsData() {
+            showMessage('駅データを読み込み中...', 'info');
+            try {
+                const response = await fetch(stationsDataUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch stations data: ${response.status} ${response.statusText}`);
                 }
-            }
+                const geoJson = await response.json(); // GeoJSONとしてパース
 
-            if (bestMatchLength === 0) {
-                 console.warn(`住所 "${address}" (${pref}${city}) に対応する市区町村コードがマスターデータに見つかりませんでした。`);
-            }
+                if (geoJson && geoJson.features) {
+                    stationsData = geoJson.features.map(feature => {
+                        // GeoJSONの座標は [経度, 緯度] の順
+                        const longitude = feature.geometry.coordinates[0];
+                        const latitude = feature.geometry.coordinates[1];
+                        // 駅名はプロパティの N02_005 に格納されていることを想定
+                        const station_name = feature.properties ? feature.properties.N02_005 : '不明な駅名';
 
-            return foundCode;
+                        return { station_name, latitude, longitude };
+                    }).filter(station => !isNaN(station.latitude) && !isNaN(station.longitude)); // 無効な緯度経度を除外
+
+                    console.log('駅データ読み込み完了 (GeoJSON):', stationsData);
+                    showMessage(`駅データ ${stationsData.length} 件を読み込みました。`);
+                } else {
+                    showMessage('GeoJSONファイルが空か、形式が不正です。', 'error');
+                    stationsData = [];
+                }
+            } catch (error) {
+                console.error('駅データ読み込みエラー:', error);
+                showMessage('駅データを読み込めませんでした。URLが正しいか、CORSが許可されているか確認してください。', 'error');
+                stationsData = [];
+            }
+        }
+
+        /**
+         * ハバーサインの公式を使って2点間の距離をキロメートルで計算する関数
+         * @param {number} lat1 - 1点目の緯度
+         * @param {number} lon1 - 1点目の経度
+         * @param {number} lat2 - 2点目の緯度
+         * @param {number} lon2 - 2点目の経度
+         * @returns {number} 2点間の距離 (km)
+         */
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // 地球の半径 (km)
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // 距離 (km)
         }
 
 
@@ -520,10 +510,14 @@
                 return;
             }
 
+            if (stationsData.length === 0) {
+                 showMessage('警告: 駅データが読み込まれていないため、最寄り駅と距離は取得できません。', 'warning');
+                 // 処理は続行可能なのでreturnしない
+            }
 
             geocodeButton.disabled = true;
             downloadCsvButton.disabled = true;
-            showMessage('緯度経度と市区町村コードを取得中です...（時間がかかる場合があります）', 'info');
+            showMessage('緯度経度と最寄り駅を取得中です...（時間がかかる場合があります）', 'info');
             updateProgressBar(0);
 
             resultData = [];
@@ -543,8 +537,36 @@
                 // 国土地理院APIから緯度経度と国交省住所1を取得
                 const { latitude, longitude, gsiAddressTitle } = await getLatLonAndGSIAddressTitle(normalizedAddress);
                 
-                // マスターデータから市区町村コードを取得
-                const municipalCode = getMunicipalCodeFromMaster(inputAddress); // マスター検索は元の住所で
+                // --- 最寄り駅の検索 ---
+                let nearestStationNameValue = '';
+                let nearestStationDistanceValue = '';
+
+                if (stationsData.length > 0 && typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
+                    let minDistance = Infinity;
+                    let nearestStation = null;
+
+                    for (const station of stationsData) {
+                        // 緯度経度が数値であることを確認
+                        if (typeof station.latitude === 'number' && typeof station.longitude === 'number' && !isNaN(station.latitude) && !isNaN(station.longitude)) {
+                            const dist = haversineDistance(latitude, longitude, station.latitude, station.longitude);
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                nearestStation = station;
+                            }
+                        }
+                    }
+                    if (nearestStation) {
+                        nearestStationNameValue = nearestStation.station_name;
+                        nearestStationDistanceValue = minDistance.toFixed(2); // 小数点以下2桁に丸める
+                    }
+                } else if (stationsData.length === 0) {
+                    nearestStationNameValue = '駅データなし';
+                    nearestStationDistanceValue = '駅データなし';
+                } else {
+                    nearestStationNameValue = '住所不明';
+                    nearestStationDistanceValue = '住所不明';
+                }
+
 
                 // --- 新しい出力行のデータを構築 ---
                 const outputRowValues = {};
@@ -567,7 +589,10 @@
                 
                 outputRowValues['緯度'] = latitude;
                 outputRowValues['経度'] = longitude;
-                outputRowValues['市区町村コード'] = municipalCode;
+                // outputRowValues['市区町村コード'] は削除
+                outputRowValues['鉄道最寄駅'] = nearestStationNameValue; // 最寄り駅を追加
+                outputRowValues['最寄り駅距離(km)'] = nearestStationDistanceValue; // 最寄り駅距離を追加
+
 
                 // CSV形式に変換してresultDataに追加
                 const csvRow = OUTPUT_HEADERS.map(header => {
@@ -584,13 +609,9 @@
                 processedCount++;
                 const progress = (processedCount / totalAddresses) * 100;
                 updateProgressBar(progress);
-
-                // APIへの負荷を軽減するため、少し待つ (緯度経度取得のため)
-                // この行を削除することで速度が向上します
-                // await new Promise(resolve => setTimeout(resolve, 100)); // 100ミリ秒待機
             }
 
-            showMessage('緯度経度と市区町村コードの取得が完了しました！', 'success');
+            showMessage('緯度経度と最寄り駅の取得が完了しました！', 'success');
             geocodeButton.disabled = false;
             downloadCsvButton.disabled = false;
             updateProgressBar(100);
@@ -599,7 +620,7 @@
         // CSVダウンロードボタンクリックイベントリスナー
         downloadCsvButton.addEventListener('click', () => {
             if (resultData.length === 0) {
-                showMessage('まず緯度経度と市区町村コードを取得してください。', 'error');
+                showMessage('まず緯度経度と最寄り駅を取得してください。', 'error');
                 return;
             }
 
@@ -618,7 +639,7 @@
         });
 
         // 初期状態
-        csvFileInput.disabled = true; // マスターデータ読み込みまで無効化
+        csvFileInput.disabled = true; // 駅データ読み込みまで無効化
         geocodeButton.disabled = true;
         downloadCsvButton.disabled = true;
     </script>

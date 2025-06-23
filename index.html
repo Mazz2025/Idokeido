@@ -157,7 +157,7 @@
             '国交省住所2', '国交省住所補足', '住所1', '住所2', '住所3', '電話番号', 'FAX番号',
             '担当部門', '担当者役職', '担当者名', '担当者MAIL', '代表業態コード', '業態中分類コード',
             '旧業態コード', '旧業態中分類コード', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
-            '鉄道最寄駅', '最寄り駅距離(km)', // 最寄り駅と距離を追加
+            '鉄道最寄り駅', '最寄り駅距離(km)', // 最寄り駅と距離を追加
             'バス最寄駅', '添付ファイルコード', 'ファイル名', 'ファイルアップロード日',
             'SEJDO名', '免許品', '実績年月日1', '実績作業量1', '実績年月日2', '実績作業量2',
             '実績年月日3', '実績作業量3', '登録日時', '登録ユーザID', '更新日時', '更新ユーザID'
@@ -177,7 +177,7 @@
 
         // アプリ起動時にマスターデータ（駅データ）を読み込む
         window.onload = async () => {
-            // stationsDataUrlが有効なURLであるかを確認 (プレースホルダー文字列との比較を削除)
+            // stationsDataUrlが有効なURLであるかを確認
             if (!stationsDataUrl.startsWith('http')) {
                 // GeoJSONのURLが設定されていない場合の警告メッセージ
                 showMessage('警告: 駅データのURLが設定されていません。最寄り駅検索機能は利用できません。コード内の `stationsDataUrl` 変数をGitHubにアップロードしたGeoJSONファイルのRaw URLに置き換えてください。', 'error');
@@ -186,31 +186,39 @@
                 return;
             }
 
-            await loadStationsData();
-            // 駅データが読み込まれたら、CSVアップロードとジオコーディングボタンを有効にする
+            await loadStationsData(); // loadStationsData will set the message
+
+            // After loadStationsData, check if stationsData was successfully populated.
+            // If loadStationsData failed, it would have already set an error message.
+            // If it succeeded but stationsData is empty, it would have set a more specific error.
+            // So, only enable buttons if stationsData has content.
             if (stationsData.length > 0) {
-                showMessage('アプリが起動しました。CSVファイルをアップロードしてください。');
+                // If a success message wasn't explicitly set by loadStationsData, set a general one.
+                if (!messageText.textContent.includes('件を読み込みました')) { // Avoid overwriting specific success message
+                    showMessage('アプリが起動しました。CSVファイルをアップロードしてください。');
+                }
                 csvFileInput.disabled = false;
                 geocodeButton.disabled = false; 
             } else {
-                // 駅データが読み込めなかった場合のメッセージ
-                showMessage('駅データを読み込めませんでした。最寄り駅検索機能は利用できません。ネットワーク接続またはURLを確認してください。', 'error');
-                csvFileInput.disabled = false;
-                geocodeButton.disabled = true; // 駅データがないと最寄り駅検索ができないため無効化
+                // loadStationsDataがエラーメッセージを設定しているはずなので、ここではボタンを無効化するだけ
+                csvFileInput.disabled = false; // CSVアップロードは可能にしておく
+                geocodeButton.disabled = true; 
             }
         };
 
         // メッセージ表示関数
         function showMessage(text, type = 'info') {
             messageBox.classList.remove('hidden', 'message-info', 'message-success', 'message-error');
+            messageBox.classList.add('p-4', 'mt-4', 'rounded-lg'); // スタイルを再適用
             messageText.textContent = text;
             if (type === 'info') {
-                messageBox.classList.add('message-info');
+                messageBox.classList.add('bg-blue-100', 'text-blue-800');
             } else if (type === 'success') {
-                messageBox.classList.add('message-success');
+                messageBox.classList.add('bg-green-100', 'text-green-800');
             } else if (type === 'error') {
-                messageBox.classList.add('message-error');
+                messageBox.classList.add('bg-red-100', 'text-red-800');
             }
+            messageBox.classList.remove('hidden'); // メッセージボックスを表示
         }
 
         // プログレスバー表示関数
@@ -437,12 +445,22 @@
             try {
                 const response = await fetch(stationsDataUrl);
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch stations data: ${response.status} ${response.statusText}`);
+                    const errorText = await response.text(); // レスポンスボディを取得してより詳細な情報
+                    console.error('Fetch response not OK:', response.status, response.statusText, 'Body:', errorText);
+                    throw new Error(`ネットワークエラー: ${response.status} ${response.statusText}. URLまたはネットワーク接続を確認してください。`);
                 }
-                const geoJson = await response.json(); // GeoJSONとしてパース
+                
+                let geoJson;
+                try {
+                    geoJson = await response.json(); // GeoJSONとしてパース
+                    console.log('GeoJSONを正常にパースしました:', geoJson); 
+                } catch (jsonError) {
+                    console.error('GeoJSONのパース中にエラー:', jsonError);
+                    throw new Error(`GeoJSONファイル形式が不正です。ファイルが破損しているか、有効なGeoJSON形式ではありません。`);
+                }
 
-                if (geoJson && geoJson.features) {
-                    stationsData = geoJson.features.map(feature => {
+                if (geoJson && geoJson.features && geoJson.features.length > 0) { // features配列が存在し、かつ空でないことを確認
+                    let tempStations = geoJson.features.map(feature => {
                         let longitude = null;
                         let latitude = null;
 
@@ -474,20 +492,30 @@
                         if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
                             return { station_name, latitude, longitude };
                         } else {
-                            console.warn(`駅名 "${station_name}" のGeoJSONに無効または非対応のgeometryタイプ/座標が見つかりました:`, feature.geometry);
+                            console.warn(`駅名 "${station_name}" のGeoJSONに無効な緯度経度が見つかりました (タイプ: ${feature.geometry ? feature.geometry.type : '不明'}, Lat: ${latitude}, Lon: ${longitude}). この駅はスキップされます。`);
                             return null; // この駅は後でフィルタリングで除外される
                         }
-                    }).filter(station => station !== null); // nullをフィルタリングして除外
+                    });
+                    
+                    stationsData = tempStations.filter(station => station !== null); // nullをフィルタリングして除外
+                    console.log('フィルタリング後の駅データ:', stationsData); 
 
-                    console.log('駅データ読み込み完了 (GeoJSON):', stationsData);
-                    showMessage(`駅データ ${stationsData.length} 件を読み込みました。`);
+                    if (stationsData.length > 0) {
+                        console.log(`駅データ ${stationsData.length} 件の読み込みとフィルタリングが完了しました。`);
+                        showMessage(`駅データ ${stationsData.length} 件を読み込みました。`, 'success'); 
+                    } else {
+                        // 全てのfeaturesがフィルタリングで除外された場合
+                        showMessage('GeoJSONファイルには有効な駅データが含まれていませんでした。緯度経度情報が正しいか、サポートされているgeometryタイプか確認してください。', 'error');
+                        stationsData = []; // stationsDataを確実に空にする
+                    }
                 } else {
-                    showMessage('GeoJSONファイルが空か、形式が不正です。GeoJSONファイルに "features" 配列が含まれているか確認してください。', 'error');
+                    showMessage('GeoJSONファイルが空か、形式が不正です。GeoJSONファイルに "features" 配列が含まれているか、またはその配列が空でないか確認してください。', 'error');
                     stationsData = [];
                 }
             } catch (error) {
-                console.error('駅データ読み込みエラー:', error);
-                showMessage('駅データを読み込めませんでした。URLが正しいか、CORSが許可されているか、GeoJSONファイルの構造が正しいか確認してください。', 'error');
+                console.error('駅データ読み込み中に致命的なエラー:', error); 
+                // throwされたエラーメッセージを直接表示
+                showMessage(`駅データを読み込めませんでした: ${error.message} ネットワーク接続またはURL、GeoJSONファイルの構造を確認してください。`, 'error'); 
                 stationsData = [];
             }
         }

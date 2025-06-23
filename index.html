@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.0.5"; // ここでバージョンを管理
+        const APP_VERSION = "v1.0.6"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -518,8 +518,14 @@
             const baseUrl = 'https://zipcloud.ibsnet.co.jp/api/search';
             let postalCode = '';
 
-            // Attempt 1: Try with refined town (address3) - keep 丁目, remove digits/banchi/gou
-            let refinedTownForAPI = town.replace(/(\d+番地)|(\d+号)|(\d+[-ー]\d+)/g, '').trim();
+            // Attempt 1: Try with refined town (address3)
+            // まず、全角数字と全角ハイフンを半角に変換
+            let tempTown = town.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            tempTown = tempTown.replace(/ー/g, '-');
+
+            // 町域から末尾の数字とハイフン、番地、号を除去。丁目は残す。
+            let refinedTownForAPI = tempTown.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim(); // 末尾の数字とハイフン、番地、号を除去
+            
             // 括弧内の情報も除去 (例: (その他) など)
             refinedTownForAPI = refinedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
             

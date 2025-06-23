@@ -179,7 +179,7 @@
             '国交省住所2', '国交省住所補足', '住所1', '住所2', '住所3', '電話番号', 'FAX番号',
             '担当部門', '担当者役職', '担当者名', '担当者MAIL', '代表業態コード', '業態中分類コード',
             '旧業態コード', '旧業態コード中分類', '顧客側店舗コード', '管轄DOコード', '緯度', '経度',
-            '鉄道最寄駅', // '最寄り駅距離(km)' を削除
+            '鉄道最寄駅', 
             'バス最寄駅', '添付ファイルコード', 'ファイル名', 'ファイルアップロード日',
             'SEJDO名', '免許品', '実績年月日1', '実績作業量1', '実績年月日2', '実績作業量2',
             '実績年月日3', '実績作業量3', '登録日時', '登録ユーザID', '更新日時', '更新ユーザID'
@@ -800,14 +800,19 @@
                 outputRowValues['緯度'] = latitude;
                 outputRowValues['経度'] = longitude;
                 outputRowValues['鉄道最寄駅'] = nearestStationNameValue;
-                // outputRowValues['最寄り駅距離(km)'] = nearestStationDistanceValue; // 最寄り駅距離を削除
                 outputRowValues['市区町村コード'] = cityCodeValue;
                 // 'バス最寄駅'などの他の項目は、もし入力CSVに同名のヘッダーが存在すれば、
                 // 上記のステップ2で自動的にコピーされています。
 
                 // CSV形式に変換してresultDataに追加
                 const csvRow = OUTPUT_HEADERS.map(header => {
-                    const value = outputRowValues[header];
+                    let value = outputRowValues[header];
+
+                    // 郵便番号と市区町村コードの頭0欠落対策 (Excelで文字列として認識させる)
+                    if (header === '郵便番号' || header === '市区町村コード') {
+                        value = `'${value}`; 
+                    }
+                    
                     // CSVの値を適切にエスケープ（カンマや引用符、改行を含む場合）
                     if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r'))) {
                         return `"${value.replace(/"/g, '""')}"`;

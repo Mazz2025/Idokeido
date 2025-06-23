@@ -177,8 +177,10 @@
 
         // アプリ起動時にマスターデータ（駅データ）を読み込む
         window.onload = async () => {
+            // stationsDataUrlがプレースホルダーのままではないか、有効なURLであるかを確認
             if (stationsDataUrl === 'https://raw.githubusercontent.com/Mazz2025/Idokeido/main/N02-20_Station.geojson' || !stationsDataUrl.startsWith('http')) {
-                showMessage('警告: 駅データのURLが設定されていません。最寄り駅検索機能は利用できません。コード内の `stationsDataUrl` 変数を正しいURLに置き換えてください。', 'error');
+                // GeoJSONのURLが設定されていない場合の警告メッセージ
+                showMessage('警告: 駅データのURLが設定されていません。最寄り駅検索機能は利用できません。コード内の `stationsDataUrl` 変数をGitHubにアップロードしたGeoJSONファイルのRaw URLに置き換えてください。', 'error');
                 csvFileInput.disabled = false;
                 geocodeButton.disabled = true; // 駅データがないと最寄り駅検索ができないため無効化
                 return;

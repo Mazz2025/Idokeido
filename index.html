@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.0.8"; // ここでバージョンを管理
+        const APP_VERSION = "v1.0.9"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -193,7 +193,7 @@
         const stationsDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/main/N02-20_Station.geojson'; 
 
         // --- 市区町村コードデータのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
-        // 例: 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'
+        // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/city-codes.csv'
         const cityCodesDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'; // ★ここを city-codes.csv のRaw URLに置き換えてください
 
         // --- 出力CSVファイルの最終的なヘッダー順とマッピング ---
@@ -455,7 +455,7 @@
                 'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
                 'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
                 'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
-                'ャ': 'ｬ', 'ュ': 'ュ', 'ョ': 'ｮ', 'ッ': 'ｯ',
+                'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ', 'ッ': 'ｯ',
                 'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
                 'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
                 'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
@@ -526,18 +526,13 @@
             let postalCode = '';
 
             // Attempt 1: Try with refined town (address3)
-            // まず、NFKC正規化を行い、全角数字と全角ハイフンを半角に変換
-            let tempTown = String(town).normalize('NFKC');
-            tempTown = tempTown.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-            tempTown = tempTown.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
+            // townパラメータはgetPrefCityWardAndRemainingForLookupで既に整形されている想定だが、
+            // 念のため末尾の不要な数字や記号を再度除去
+            let refinedTownForAPI = town;
+            refinedTownForAPI = refinedTownForAPI.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim(); // 番地・号・ハイフン結合数字の除去
+            refinedTownForAPI = refinedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim(); // 括弧内除去
+            refinedTownForAPI = refinedTownForAPI.replace(/[\s　]+$/, ''); // 末尾のスペース除去
 
-            // 町域から末尾の数字とハイフン、番地、号を除去。丁目は残す。
-            // (例: "篠崎町7-27-19" -> "篠崎町")
-            let refinedTownForAPI = tempTown.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim();
-            
-            // 括弧内の情報も除去 (例: (その他) など)
-            refinedTownForAPI = refinedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
-            
             console.log(`郵便番号検索API (Attempt 1): Pref: "${pref}", City: "${city}", Refined Town for API: "${refinedTownForAPI}"`);
             try {
                 const queryParams1 = new URLSearchParams();
@@ -549,14 +544,14 @@
                 const apiUrl1 = `${baseUrl}?${queryParams1.toString()}`;
                 const response1 = await fetch(apiUrl1);
                 const data1 = await response1.json();
-                console.log(`郵便番号検索API (Attempt 1) Response:`, data1);
+                console.log(`郵便番号検索API (Attempt 1) Response (status: ${data1.status}, message: "${data1.message}"):`, data1); // ★ログの詳細化
 
                 if (response1.ok && data1.status === 200 && data1.results && data1.results.length > 0) {
                     postalCode = String(data1.results[0].zipcode).padStart(7, '0');
                     console.log(`郵便番号検索API (Attempt 1): Found postal code: ${postalCode}`);
                     return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (refined: "${refinedTownForAPI}"). Retrying without town...`);
+                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (refined: "${refinedTownForAPI}"). Status: ${data1.status}, Message: "${data1.message}". Retrying without town...`);
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 1) calling error:`, error);
@@ -571,14 +566,14 @@
                 const apiUrl2 = `${baseUrl}?${queryParams2.toString()}`;
                 const response2 = await fetch(apiUrl2);
                 const data2 = await response2.json();
-                console.log(`郵便番号検索API (Attempt 2) Response:`, data2);
+                console.log(`郵便番号検索API (Attempt 2) Response (status: ${data2.status}, message: "${data2.message}"):`, data2); // ★ログの詳細化
 
                 if (response2.ok && data2.status === 200 && data2.results && data2.results.length > 0) {
                     postalCode = String(data2.results[0].zipcode).padStart(7, '0');
                     console.log(`郵便番号検索API (Attempt 2): Found postal code: ${postalCode}`);
                     return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API (Attempt 2): No results or API error for "${pref}${city}" (fallback)`);
+                    console.warn(`郵便番号検索API (Attempt 2): No results or API error for "${pref}${city}" (fallback). Status: ${data2.status}, Message: "${data2.message}".`);
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 2) calling error:`, error);
@@ -597,15 +592,22 @@
             let town = '';
             let remainingAddress = String(fullAddress).normalize('NFKC'); // NFKC正規化を先行
 
+            // 全角数字と全角ハイフンを半角に変換
+            remainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            remainingAddress = remainingAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 全角ハイフンマイナスと長音符の両方を変換
+
+            console.log(`getPrefCityWardAndRemainingForLookup: Normalized input address for parsing: "${remainingAddress}"`);
+
             // 都道府県を検出 (東京都, 北海道, 京都府, 大阪府, XX県)
             const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
-            const prefMatch = fullAddress.match(prefRegex); // 元のfullAddressから抽出
+            const prefMatch = remainingAddress.match(prefRegex);
             if (prefMatch) {
                 pref = prefMatch[0];
-                remainingAddress = remainingAddress.substring(pref.length); // 正規化された文字列から残りを抽出
+                remainingAddress = remainingAddress.substring(pref.length);
             }
 
             // 市区町村を検出 (市, 区, 町, 村 で終わる)
+            // 市区町村名には郡名が含まれる場合がある（例：西多摩郡日の出町）
             const cityWardRegex = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/; 
             const cityWardMatch = remainingAddress.match(cityWardRegex);
 
@@ -614,24 +616,39 @@
                 remainingAddress = remainingAddress.substring(cityWard.length);
             }
 
-            // remainingAddress内の全角数字と全角ハイフンを半角に変換して、町域抽出の正規表現が正しく機能するようにする
-            remainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-            remainingAddress = remainingAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
-            console.log(`getPrefCityWardAndRemainingForLookup: Normalized remaining address for town extraction: "${remainingAddress}"`);
+            // 残りの住所（町域＋番地等）から町域のみを抽出
+            let townCandidate = remainingAddress.trim();
 
-            // 残りの住所から町域（town）を抽出する
-            // 数字や「番地」「号」などの前で区切る
-            const townMatch = remainingAddress.match(/^(.+?)(?=\d+[番号]|\d+[-]|(\d+[-]?\d*[番地号]?)$|$)/); 
-            if (townMatch && townMatch[1]) {
-                town = townMatch[1].trim();
-                // さらに、不要な括弧内の情報などを削除してクリーンにする
-                town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
-                // ここでは丁目を除去しない（API呼び出し側で調整するため）
-            } else {
-                town = remainingAddress.trim(); // 数字部分がない場合は全体を町域とする
-                town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
-            }
+            // 括弧内の情報（例：(その他)）を除去
+            townCandidate = townCandidate.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
+
+            // 数字とハイフン、番地、号、階、ビル名、方書などの詳細部分を町名から除去
+            // この正規表現は、町名の末尾にある可能性のある「数字を含む詳細情報」を除去することを目指します。
+            // 例: "篠崎町7-27-19" -> "篠崎町"
+            // 例: "丸の内1丁目1番地1号" -> "丸の内1丁目"
+            // 例: "日本橋室町四丁目一番地" -> "日本橋室町四丁目"
+            // 例: "大手町1-1" -> "大手町"
+            // 以下のパターンは、町名の後に続く番地、号、またはハイフンでつながる数字の塊を検出して除去します。
+            // - 数字とそれに続く番地、号、階、ビル名、方書など
+            // - ハイフンで繋がれた数字（例: 7-27-19）
+            // - 数字のみで構成される末尾部分
+            const detailedAddressRegex = /([０-９0-9]+[番地号階]?[-－ー]?[０-９0-9]+.*|[０-９0-9]+[番地号階].*|[-－ー][０-９0-9]+.*|\d+[-]+\d+.*|[０-９0-9]+.*)$/;
             
+            // 全角数字と全角ハイフンを半角に変換してから除去
+            let tempTownForStrip = townCandidate.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            tempTownForStrip = tempTownForStrip.replace(/[\uFF0D\u30FC]/g, '-');
+
+            let strippedTown = tempTownForStrip.replace(detailedAddressRegex, '').trim();
+            
+            // strippedTownが空になった場合、townCandidate全体を再度確認（地番のみの町名など）
+            if (!strippedTown && townCandidate.length > 0) {
+                // 例外的なケース（例：町名が数字から始まる場合など）
+                strippedTown = townCandidate.match(/^(.*?)(?:(?:\d+[丁目番地号])|(?:\d+-\d+)|$)/)?.[1] || townCandidate;
+            }
+
+            // 最終的な町名として採用
+            town = strippedTown;
+
             console.log(`getPrefCityWardAndRemainingForLookup: Parsed - Pref: "${pref}", City: "${cityWard}", Town: "${town}" (for API)`);
             return { pref, city: cityWard, town: town };
         }
@@ -1050,7 +1067,7 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url); // 不要になったURLを解放
-            showMessage('CSVファイルをダウンロードしました。', 'success');
+            showMessage('CSVファイルをダウンロードしました。', 'success')
         });
 
         // 初期状態

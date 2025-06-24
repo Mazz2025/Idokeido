@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.1.2"; // ここでバージョンを管理
+        const APP_VERSION = "v1.1.3"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -446,7 +446,7 @@
             const halfWidthMap = {
                 'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
                 'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
-                'サ': 'ｻ', 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ',
+                'サ': 'ｻ', 'ｻ', 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ',
                 'タ': 'ﾀ', 'チ': 'ﾁ', 'ツ': 'ﾂ', 'テ': 'ﾃ', 'ト': 'ﾄ',
                 'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
                 'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
@@ -522,8 +522,8 @@
                 return ''; // 無効な入力の場合はAPIを叩かない
             }
 
-            // ★変更点: zipcloud.gree.jp のAPIを使用
-            const baseUrl = 'https://zipcloud.gree.jp/api/search'; 
+            // ★変更点: api.zipcode.city のAPIを使用
+            const baseUrl = 'https://api.zipcode.city/search'; 
             let postalCode = '';
 
             // Attempt 1: Try with refined town (address3)
@@ -544,7 +544,7 @@
             refinedTownForAPI = refinedTownForAPI.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim(); 
             
             // 末尾の「数字丁目」を除去する (例: "篠崎町7丁目" -> "篠崎町")
-            // zipcloud APIのaddress3は、純粋な町名が好ましい場合があるため
+            // api.zipcode.city APIも純粋な町名が好ましいため
             refinedTownForAPI = refinedTownForAPI.replace(/(\d+丁目)$/, '').trim();
 
             refinedTownForAPI = refinedTownForAPI.replace(/[\s　]+$/, ''); // 末尾のスペース除去
@@ -552,22 +552,22 @@
             console.log(`郵便番号検索API (Attempt 1): Pref: "${pref}", City: "${city}", Refined Town for API: "${refinedTownForAPI}"`);
             try {
                 const queryParams1 = new URLSearchParams();
-                queryParams1.append('address1', pref);
-                queryParams1.append('address2', city);
+                queryParams1.append('pref', pref); // ★api.zipcode.city のパラメータ名に合わせる
+                queryParams1.append('city', city); // ★api.zipcode.city のパラメータ名に合わせる
                 if (refinedTownForAPI) {
-                    queryParams1.append('address3', refinedTownForAPI);
+                    queryParams1.append('town', refinedTownForAPI); // ★api.zipcode.city のパラメータ名に合わせる
                 }
                 const apiUrl1 = `${baseUrl}?${queryParams1.toString()}`;
                 const response1 = await fetch(apiUrl1);
                 const data1 = await response1.json();
-                console.log(`郵便番号検索API (Attempt 1) Response (status: ${data1.status}, message: "${data1.message}"):`, data1); // ★ログの詳細化
+                console.log(`郵便番号検索API (Attempt 1) Response:`, data1); // messageフィールドがないので出力から削除
 
-                if (response1.ok && data1.status === 200 && data1.results && data1.results.length > 0) {
-                    postalCode = String(data1.results[0].zipcode).padStart(7, '0');
+                if (response1.ok && data1.data && data1.data.length > 0) { // ★api.zipcode.city のレスポンス構造に合わせる
+                    postalCode = String(data1.data[0].zipcode).padStart(7, '0'); // ★api.zipcode.city のレスポンス構造に合わせる
                     console.log(`郵便番号検索API (Attempt 1): Found postal code: ${postalCode}`);
                     return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (refined: "${refinedTownForAPI}"). Status: ${data1.status}, Message: "${data1.message}". Retrying without town...`);
+                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (refined: "${refinedTownForAPI}"). Retrying without town...`);
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 1) calling error:`, error);
@@ -577,19 +577,19 @@
             console.log(`郵便番号検索API (Attempt 2 - Fallback): Pref: "${pref}", City: "${city}" (without town)`);
             try {
                 const queryParams2 = new URLSearchParams();
-                queryParams2.append('address1', pref);
-                queryParams2.append('address2', city);
+                queryParams2.append('pref', pref); // ★api.zipcode.city のパラメータ名に合わせる
+                queryParams2.append('city', city); // ★api.zipcode.city のパラメータ名に合わせる
                 const apiUrl2 = `${baseUrl}?${queryParams2.toString()}`;
                 const response2 = await fetch(apiUrl2);
                 const data2 = await response2.json();
-                console.log(`郵便番号検索API (Attempt 2) Response (status: ${data2.status}, message: "${data2.message}"):`, data2); // ★ログの詳細化
+                console.log(`郵便番号検索API (Attempt 2) Response:`, data2); // messageフィールドがないので出力から削除
 
-                if (response2.ok && data2.status === 200 && data2.results && data2.results.length > 0) {
-                    postalCode = String(data2.results[0].zipcode).padStart(7, '0');
+                if (response2.ok && data2.data && data2.data.length > 0) { // ★api.zipcode.city のレスポンス構造に合わせる
+                    postalCode = String(data2.data[0].zipcode).padStart(7, '0'); // ★api.zipcode.city のレスポンス構造に合わせる
                     console.log(`郵便番号検索API (Attempt 2): Found postal code: ${postalCode}`);
                     return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API (Attempt 2): No results or API error for "${pref}${city}" (fallback). Status: ${data2.status}, Message: "${data2.message}".`);
+                    console.warn(`郵便番号検索API (Attempt 2): No results or API error for "${pref}${city}" (fallback).`);
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 2) calling error:`, error);
@@ -609,7 +609,7 @@
             let remainingAddress = String(fullAddress).normalize('NFKC'); // NFKC正規化を先行
 
             // 全角数字と全角ハイフンを半角に変換
-            remainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)); // ★修正: [０-9] を [０-９] に変更
+            remainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)); 
             remainingAddress = remainingAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 全角ハイフンマイナスと長音符の両方を変換
 
             console.log(`getPrefCityWardAndRemainingForLookup: Normalized input address for parsing: "${remainingAddress}"`);

@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.1.5"; // ここでバージョンを管理
+        const APP_VERSION = "v1.1.6"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -446,14 +446,14 @@
             const halfWidthMap = {
                 'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
                 'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
-                'サ': 'ｻ', // ★修正: 重複していた 'サ' を削除
+                'サ': 'ｻ', 
                 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ', 
                 'タ': 'ﾀ', 'チ': 'ﾁ', 'ツ': 'ﾂ', 'テ': 'ﾃ', 'ト': 'ﾄ',
                 'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
                 'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
                 'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
                 'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
-                'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
+                'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ', // ★修正: 正しい構文に修正
                 'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
                 'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
                 'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ', 'ッ': 'ｯ',
@@ -563,7 +563,11 @@
                 const data1 = await response1.json();
                 console.log(`郵便番号検索API (Attempt 1) Response:`, data1); // messageフィールドがないので出力から削除
 
-                if (response1.ok && data1.data && data1.data.length > 0) { // api.zipcode.city のレスポンス構造に合わせる
+                if (!response1.ok) { // 追加: HTTPステータスが2xx以外の場合もエラーとして処理
+                    console.error(`郵便番号検索API (Attempt 1) HTTPエラー: ${response1.status} ${response1.statusText}`);
+                }
+
+                if (data1.data && data1.data.length > 0) { // api.zipcode.city のレスポンス構造に合わせる
                     postalCode = String(data1.data[0].zipcode).padStart(7, '0'); // api.zipcode.city のレスポンス構造に合わせる
                     console.log(`郵便番号検索API (Attempt 1): Found postal code: ${postalCode}`);
                     return postalCode;
@@ -572,6 +576,7 @@
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 1) calling error:`, error);
+                showMessage(`郵便番号検索中にネットワークエラーが発生しました。インターネット接続またはネットワーク環境（ファイアウォールなど）を確認してください。詳細: ${error.message}`, 'error'); // ユーザー向けメッセージ
             }
 
             // Attempt 2: Fallback - Try without town (address3) if Attempt 1 failed
@@ -585,7 +590,11 @@
                 const data2 = await response2.json();
                 console.log(`郵便番号検索API (Attempt 2) Response:`, data2); // messageフィールドがないので出力から削除
 
-                if (response2.ok && data2.data && data2.data.length > 0) { // api.zipcode.city のレスポンス構造に合わせる
+                if (!response2.ok) { // 追加: HTTPステータスが2xx以外の場合もエラーとして処理
+                    console.error(`郵便番号検索API (Attempt 2) HTTPエラー: ${response2.status} ${response2.statusText}`);
+                }
+
+                if (data2.data && data2.data.length > 0) { // api.zipcode.city のレスポンス構造に合わせる
                     postalCode = String(data2.data[0].zipcode).padStart(7, '0'); // api.zipcode.city のレスポンス構造に合わせる
                     console.log(`郵便番号検索API (Attempt 2): Found postal code: ${postalCode}`);
                     return postalCode;
@@ -594,6 +603,7 @@
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 2) calling error:`, error);
+                showMessage(`郵便番号検索中にネットワークエラーが発生しました。インターネット接続またはネットワーク環境（ファイアウォールなど）を確認してください。詳細: ${error.message}`, 'error'); // ユーザー向けメッセージ
             }
 
             console.warn(`郵便番号検索API: 最終的に住所 "${pref}${city}${town}" の郵便番号は見つかりませんでした。`);

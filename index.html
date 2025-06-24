@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.0.6"; // ここでバージョンを管理
+        const APP_VERSION = "v1.0.7"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -391,6 +391,10 @@
          */
         function normalizeAddressHyphens(address) {
             let tempAddress = address;
+            // 全角数字と全角ハイフンを半角に変換
+            tempAddress = tempAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            tempAddress = tempAddress.replace(/[－ー]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
+            
             console.log(`normalizeAddressHyphens: Initial address: "${tempAddress}"`);
 
             // Rule 1: "数字丁目"の後の"数字-数字"パターンを"数字番数字号"に変換
@@ -485,7 +489,7 @@
 
             // 全角数字と全角ハイフンを半角に変換
             let normalizedAddress = address.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-            normalizedAddress = normalizedAddress.replace(/ー/g, '-');
+            normalizedAddress = normalizedAddress.replace(/[－ー]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
             console.log(`extractPostalCodeFromAddressString: Normalized address for direct extraction: "${normalizedAddress}"`);
 
             // 7桁の数字（ハイフンあり/なし）の郵便番号を検索
@@ -521,10 +525,11 @@
             // Attempt 1: Try with refined town (address3)
             // まず、全角数字と全角ハイフンを半角に変換
             let tempTown = town.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-            tempTown = tempTown.replace(/ー/g, '-');
+            tempTown = tempTown.replace(/[－ー]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
 
             // 町域から末尾の数字とハイフン、番地、号を除去。丁目は残す。
-            let refinedTownForAPI = tempTown.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim(); // 末尾の数字とハイフン、番地、号を除去
+            // (例: "篠崎町7-27-19" -> "篠崎町")
+            let refinedTownForAPI = tempTown.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim();
             
             // 括弧内の情報も除去 (例: (その他) など)
             refinedTownForAPI = refinedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
@@ -605,16 +610,21 @@
                 remainingAddress = remainingAddress.substring(cityWard.length);
             }
 
+            // remainingAddress内の全角数字と全角ハイフンを半角に変換して、町域抽出の正規表現が正しく機能するようにする
+            let normalizedRemainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            normalizedRemainingAddress = normalizedRemainingAddress.replace(/[－ー]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
+            console.log(`getPrefCityWardAndRemainingForLookup: Normalized remaining address for town extraction: "${normalizedRemainingAddress}"`);
+
             // 残りの住所から町域（town）を抽出する
             // 数字や「番地」「号」などの前で区切る
-            const townMatch = remainingAddress.match(/^(.+?)(?=\d+[番号]|\d+[-ー]|$)/); 
+            const townMatch = normalizedRemainingAddress.match(/^(.+?)(?=\d+[番号]|\d+[-]|(\d+[-]?\d*[番地号]?)$|$)/); 
             if (townMatch && townMatch[1]) {
                 town = townMatch[1].trim();
                 // さらに、不要な括弧内の情報などを削除してクリーンにする
                 town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
                 // ここでは丁目を除去しない（API呼び出し側で調整するため）
             } else {
-                town = remainingAddress.trim(); // 数字部分がない場合は全体を町域とする
+                town = normalizedRemainingAddress.trim(); // 数字部分がない場合は全体を町域とする
                 town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
             }
             

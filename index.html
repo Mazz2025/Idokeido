@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.0.9"; // ここでバージョンを管理
+        const APP_VERSION = "v1.1.0"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -529,8 +529,23 @@
             // townパラメータはgetPrefCityWardAndRemainingForLookupで既に整形されている想定だが、
             // 念のため末尾の不要な数字や記号を再度除去
             let refinedTownForAPI = town;
-            refinedTownForAPI = refinedTownForAPI.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim(); // 番地・号・ハイフン結合数字の除去
-            refinedTownForAPI = refinedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim(); // 括弧内除去
+            
+            // Step 1: NFKC正規化と全角数字・ハイフンの半角変換を再度適用（念のため）
+            refinedTownForAPI = String(refinedTownForAPI).normalize('NFKC');
+            refinedTownForAPI = refinedTownForAPI.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            refinedTownForAPI = refinedTownForAPI.replace(/[\uFF0D\u30FC]/g, '-');
+
+            // Step 2: 括弧内の情報（例：(その他)）を除去
+            refinedTownForAPI = refinedTownForAPI.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
+
+            // Step 3: 末尾の番地、号、およびハイフンで連結された数値を除去
+            // "篠崎町7丁目27番19号" -> "篠崎町7丁目"
+            refinedTownForAPI = refinedTownForAPI.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim(); 
+            
+            // ★追加: 末尾の「数字丁目」を除去する (例: "篠崎町7丁目" -> "篠崎町")
+            // zipcloud APIのaddress3は、純粋な町名が好ましい場合があるため
+            refinedTownForAPI = refinedTownForAPI.replace(/(\d+丁目)$/, '').trim();
+
             refinedTownForAPI = refinedTownForAPI.replace(/[\s　]+$/, ''); // 末尾のスペース除去
 
             console.log(`郵便番号検索API (Attempt 1): Pref: "${pref}", City: "${city}", Refined Town for API: "${refinedTownForAPI}"`);
@@ -593,7 +608,7 @@
             let remainingAddress = String(fullAddress).normalize('NFKC'); // NFKC正規化を先行
 
             // 全角数字と全角ハイフンを半角に変換
-            remainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            remainingAddress = remainingAddress.replace(/[０-9]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             remainingAddress = remainingAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 全角ハイフンマイナスと長音符の両方を変換
 
             console.log(`getPrefCityWardAndRemainingForLookup: Normalized input address for parsing: "${remainingAddress}"`);

@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.1.0"; // ここでバージョンを管理
+        const APP_VERSION = "v1.1.1"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -193,7 +193,7 @@
         const stationsDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/main/N02-20_Station.geojson'; 
 
         // --- 市区町村コードデータのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
-        // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/city-codes.csv'
+        // 例: 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'
         const cityCodesDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'; // ★ここを city-codes.csv のRaw URLに置き換えてください
 
         // --- 出力CSVファイルの最終的なヘッダー順とマッピング ---
@@ -522,7 +522,8 @@
                 return ''; // 無効な入力の場合はAPIを叩かない
             }
 
-            const baseUrl = 'https://zipcloud.ibsnet.co.jp/api/search';
+            // ★変更点: zipcloud.gree.jp のAPIを使用
+            const baseUrl = 'https://zipcloud.gree.jp/api/search'; 
             let postalCode = '';
 
             // Attempt 1: Try with refined town (address3)
@@ -542,7 +543,7 @@
             // "篠崎町7丁目27番19号" -> "篠崎町7丁目"
             refinedTownForAPI = refinedTownForAPI.replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim(); 
             
-            // ★追加: 末尾の「数字丁目」を除去する (例: "篠崎町7丁目" -> "篠崎町")
+            // 末尾の「数字丁目」を除去する (例: "篠崎町7丁目" -> "篠崎町")
             // zipcloud APIのaddress3は、純粋な町名が好ましい場合があるため
             refinedTownForAPI = refinedTownForAPI.replace(/(\d+丁目)$/, '').trim();
 

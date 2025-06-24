@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.0.7"; // ここでバージョンを管理
+        const APP_VERSION = "v1.0.8"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -193,7 +193,7 @@
         const stationsDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/main/N02-20_Station.geojson'; 
 
         // --- 市区町村コードデータのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
-        // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/city-codes.csv'
+        // 例: 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'
         const cityCodesDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'; // ★ここを city-codes.csv のRaw URLに置き換えてください
 
         // --- 出力CSVファイルの最終的なヘッダー順とマッピング ---
@@ -383,43 +383,44 @@
         }
 
         /**
-         * 住所の「1-2-3」のような表記を「1丁目2番3号」のように変換するヘルパー関数。
+         * 住所の「1-2-3」のような表記を「1丁目2番3号」のように変換し、全角数字・ハイフンを半角にするヘルパー関数。
          * この関数は、主に国土地理院APIでの緯度経度取得の精度を向上させるために使用されます。
          *
          * @param {string} address - 元の住所文字列。
          * @returns {string} 変換された住所文字列。
          */
         function normalizeAddressHyphens(address) {
-            let tempAddress = address;
-            // 全角数字と全角ハイフンを半角に変換
-            tempAddress = tempAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-            tempAddress = tempAddress.replace(/[－ー]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
+            let tempAddress = String(address).normalize('NFKC'); // NFKC正規化を先行
             
-            console.log(`normalizeAddressHyphens: Initial address: "${tempAddress}"`);
+            console.log(`normalizeAddressHyphens: Step 1 (NFKC Normalized): "${tempAddress}"`);
+
+            // 明示的に全角数字を半角に変換（NFKCでカバーされるが念のため）
+            tempAddress = tempAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            console.log(`normalizeAddressHyphens: Step 2 (Half-width digits explicit): "${tempAddress}"`);
+
+            // 全角ハイフンマイナスと長音符を半角ハイフンに変換 (Unicodeエスケープで確実化)
+            tempAddress = tempAddress.replace(/[\uFF0D\u30FC]/g, '-'); 
+            console.log(`normalizeAddressHyphens: Step 3 (Half-width hyphens explicit): "${tempAddress}"`);
 
             // Rule 1: "数字丁目"の後の"数字-数字"パターンを"数字番数字号"に変換
             // 例: "西葛西3丁目15-12" -> "西葛西3丁目15番12号"
-            // このルールを最優先することで、丁目以降の番地を正確に処理し、重複変換を防ぐ。
-            tempAddress = tempAddress.replace(/(\d+丁目)(\d+)[-ー](\d+)(?![番号])/g, (match, p1, p2, p3) => {
+            tempAddress = tempAddress.replace(/(\d+丁目)(\d+)-(\d+)(?![番号])/g, (match, p1, p2, p3) => {
                 return `${p1}${p2}番${p3}号`;
             });
 
             // Rule 2: 一般的な"数字-数字-数字"パターンを"数字丁目数字番数字号"に変換
             // 例: "1-2-3" -> "1丁目2番3号"
-            // 既に「丁目」「番」「号」が付いている部分には適用しない (ネガティブ後方参照)
-            tempAddress = tempAddress.replace(/(?<![丁番号])(\d+)[-ー](\d+)[-ー](\d+)(?![丁番号])/g, (match, p1, p2, p3) => {
+            tempAddress = tempAddress.replace(/(?<![丁番号])(\d+)-(\d+)-(\d+)(?![丁番号])/g, (match, p1, p2, p3) => {
                 return `${p1}丁目${p2}番${p3}号`;
             });
 
             // Rule 3: 一般的な"数字-数字"パターンを"数字番数字号"に変換
             // 例: "15-12" (丁目などが先行しない場合) -> "15番12号"
-            // 既に「丁目」「番」「号」が付いている部分には適用しない (ネガティブ後方参照)
-            tempAddress = tempAddress.replace(/(?<![丁番号])(\d+)[-ー](\d+)(?![丁番号])/g, (match, p1, p2) => {
+            tempAddress = tempAddress.replace(/(?<![丁番号])(\d+)-(\d+)(?![丁番号])/g, (match, p1, p2) => {
                 return `${p1}番${p2}号`;
             });
             
             // Rule 4: 最後に、数字の後に「号」がない場合に「号」を追加 (文末に限定)
-            // 例: "1番2" -> "1番2号", "3丁目15番12" -> "3丁目15番12号"
             tempAddress = tempAddress.replace(/(\d+)(?![丁番号])$/, '$1号');
             console.log(`normalizeAddressHyphens: Final normalized address: "${tempAddress}"`);
 
@@ -454,7 +455,7 @@
                 'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
                 'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
                 'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
-                'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ', 'ッ': 'ｯ',
+                'ャ': 'ｬ', 'ュ': 'ュ', 'ョ': 'ｮ', 'ッ': 'ｯ',
                 'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
                 'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
                 'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
@@ -487,9 +488,11 @@
         function extractPostalCodeFromAddressString(address) {
             if (!address) return '';
 
+            let normalizedAddress = String(address).normalize('NFKC'); // NFKC正規化を先行
+
             // 全角数字と全角ハイフンを半角に変換
-            let normalizedAddress = address.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-            normalizedAddress = normalizedAddress.replace(/[－ー]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
+            normalizedAddress = normalizedAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            normalizedAddress = normalizedAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
             console.log(`extractPostalCodeFromAddressString: Normalized address for direct extraction: "${normalizedAddress}"`);
 
             // 7桁の数字（ハイフンあり/なし）の郵便番号を検索
@@ -523,9 +526,10 @@
             let postalCode = '';
 
             // Attempt 1: Try with refined town (address3)
-            // まず、全角数字と全角ハイフンを半角に変換
-            let tempTown = town.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-            tempTown = tempTown.replace(/[－ー]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
+            // まず、NFKC正規化を行い、全角数字と全角ハイフンを半角に変換
+            let tempTown = String(town).normalize('NFKC');
+            tempTown = tempTown.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            tempTown = tempTown.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
 
             // 町域から末尾の数字とハイフン、番地、号を除去。丁目は残す。
             // (例: "篠崎町7-27-19" -> "篠崎町")
@@ -591,14 +595,14 @@
             let pref = '';
             let cityWard = '';
             let town = '';
-            let remainingAddress = fullAddress; // 都道府県、市区町村を除いた残り
+            let remainingAddress = String(fullAddress).normalize('NFKC'); // NFKC正規化を先行
 
             // 都道府県を検出 (東京都, 北海道, 京都府, 大阪府, XX県)
             const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
-            const prefMatch = fullAddress.match(prefRegex);
+            const prefMatch = fullAddress.match(prefRegex); // 元のfullAddressから抽出
             if (prefMatch) {
                 pref = prefMatch[0];
-                remainingAddress = fullAddress.substring(pref.length);
+                remainingAddress = remainingAddress.substring(pref.length); // 正規化された文字列から残りを抽出
             }
 
             // 市区町村を検出 (市, 区, 町, 村 で終わる)
@@ -611,20 +615,20 @@
             }
 
             // remainingAddress内の全角数字と全角ハイフンを半角に変換して、町域抽出の正規表現が正しく機能するようにする
-            let normalizedRemainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-            normalizedRemainingAddress = normalizedRemainingAddress.replace(/[－ー]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
-            console.log(`getPrefCityWardAndRemainingForLookup: Normalized remaining address for town extraction: "${normalizedRemainingAddress}"`);
+            remainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            remainingAddress = remainingAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
+            console.log(`getPrefCityWardAndRemainingForLookup: Normalized remaining address for town extraction: "${remainingAddress}"`);
 
             // 残りの住所から町域（town）を抽出する
             // 数字や「番地」「号」などの前で区切る
-            const townMatch = normalizedRemainingAddress.match(/^(.+?)(?=\d+[番号]|\d+[-]|(\d+[-]?\d*[番地号]?)$|$)/); 
+            const townMatch = remainingAddress.match(/^(.+?)(?=\d+[番号]|\d+[-]|(\d+[-]?\d*[番地号]?)$|$)/); 
             if (townMatch && townMatch[1]) {
                 town = townMatch[1].trim();
                 // さらに、不要な括弧内の情報などを削除してクリーンにする
                 town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
                 // ここでは丁目を除去しない（API呼び出し側で調整するため）
             } else {
-                town = normalizedRemainingAddress.trim(); // 数字部分がない場合は全体を町域とする
+                town = remainingAddress.trim(); // 数字部分がない場合は全体を町域とする
                 town = town.replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim();
             }
             
@@ -642,7 +646,8 @@
             // 住所から都道府県と市区町村のみを抽出（郵便番号検索APIの町域抽出とは異なるロジック）
             let prefForCityCode = '';
             let cityForCityCode = '';
-            let tempAddress = address;
+            // NFKC正規化を適用
+            let tempAddress = String(address).normalize('NFKC');
 
             const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
             const prefMatch = tempAddress.match(prefRegex);
@@ -688,7 +693,9 @@
                 return { latitude: '', longitude: '', gsiAddressTitle: '' };
             }
 
-            const encodedAddress = encodeURIComponent(address);
+            // NFKC正規化を適用してからエンコード
+            const normalizedAddressForAPI = String(address).normalize('NFKC');
+            const encodedAddress = encodeURIComponent(normalizedAddressForAPI);
             const apiUrl = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodedAddress}`;
             console.log(`国土地理院API: Calling API with URL: ${apiUrl}`);
 

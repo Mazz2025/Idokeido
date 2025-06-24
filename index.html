@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.1.1"; // ここでバージョンを管理
+        const APP_VERSION = "v1.1.2"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -609,7 +609,7 @@
             let remainingAddress = String(fullAddress).normalize('NFKC'); // NFKC正規化を先行
 
             // 全角数字と全角ハイフンを半角に変換
-            remainingAddress = remainingAddress.replace(/[０-9]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            remainingAddress = remainingAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)); // ★修正: [０-9] を [０-９] に変更
             remainingAddress = remainingAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 全角ハイフンマイナスと長音符の両方を変換
 
             console.log(`getPrefCityWardAndRemainingForLookup: Normalized input address for parsing: "${remainingAddress}"`);

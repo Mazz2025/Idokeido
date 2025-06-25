@@ -159,7 +159,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.4.3"; // ここでバージョンを管理
+        const APP_VERSION = "v1.4.5"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -497,7 +497,7 @@
 
             let normalizedAddress = String(address).normalize('NFKC'); // NFKC正規化を先行
 
-            normalizedAddress = normalizedAddress.replace(/[０-9]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            normalizedAddress = normalizedAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             normalizedAddress = normalizedAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
             console.log(`extractPostalCodeFromAddressString: Normalized address for direct extraction: "${normalizedAddress}"`);
 
@@ -719,7 +719,7 @@
                 }
             } catch (error) {
                 console.error(`住所 "${address}" の国土地理院APIからの緯度経度・コード取得中にエラーが発生しました:`, error);
-                return { latitude: 'エラー', longitude: 'エラー', gsiAddressTitle: 'エラー' };
+                return { latitude: 'エラー', longitude: 'エラー', gsiAddressTitle: 'エラー' }; // 修正: 余分なセミコロンを削除
             }
         }
 

@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.2.0"; // ここでバージョンを管理
+        const APP_VERSION = "v1.2.1"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -452,7 +452,7 @@
                 'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
                 'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
                 'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
-                'ヤ': 'ﾔ', 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
+                'ヤ': 'ﾔ', /* ★修正箇所: ここにあった余分な 'ヤ' を削除 */ 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
                 'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ', 
                 'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
                 'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
@@ -522,7 +522,7 @@
                 return ''; // 無効な入力の場合はAPIを叩かない
             }
 
-            // ★変更点: excelapi.org のAPIを使用
+            // excelapi.org のAPIを使用
             const baseUrl = 'https://api.excelapi.org/post/zipcode'; 
             let postalCode = '';
 
@@ -551,7 +551,7 @@
                 const data1 = await response1.json();
                 console.log(`郵便番号検索API (Attempt 1) Response:`, data1);
 
-                // ★変更点: excelapi.org のレスポンス構造に合わせる (配列として返されることを期待)
+                // excelapi.org のレスポンス構造に合わせる (配列として返されることを期待)
                 if (response1.ok && Array.isArray(data1) && data1.length > 0) { 
                     postalCode = String(data1[0].zip_code).padStart(7, '0'); // zip_code を抽出
                     console.log(`郵便番号検索API (Attempt 1): Found postal code: ${postalCode}`);
@@ -575,7 +575,7 @@
                 const data2 = await response2.json();
                 console.log(`郵便番号検索API (Attempt 2) Response:`, data2);
 
-                // ★変更点: excelapi.org のレスポンス構造に合わせる (配列として返されることを期待)
+                // excelapi.org のレスポンス構造に合わせる (配列として返されることを期待)
                 if (response2.ok && Array.isArray(data2) && data2.length > 0) {
                     postalCode = String(data2[0].zip_code).padStart(7, '0');
                     console.log(`郵便番号検索API (Attempt 2): Found postal code: ${postalCode}`);

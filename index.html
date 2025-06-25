@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.3.0"; // ここでバージョンを管理
+        const APP_VERSION = "v1.3.1"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -460,7 +460,7 @@
                 'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
                 'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
                 'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
-                'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
+                'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾟ', 'ボ': 'ﾎﾞ',
                 'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
                 'ヴ': 'ｳﾞ', 'ヵ': 'ｶ', 'ヶ': 'ｹ',
                 'ー': 'ｰ', // 長音符
@@ -524,7 +524,7 @@
             const baseUrl = 'https://geoapi.heartrails.com/api/json'; 
             // HeartRails APIはx（経度）、y（緯度）で受け取る
             const queryParams = new URLSearchParams({
-                method: 'search_point', // 地点検索メソッド
+                method: 'searchByGeoLocation', // ★修正: メソッド名を searchByGeoLocation に変更
                 x: longitude,
                 y: latitude
             });

@@ -13,9 +13,8 @@
             font-family: 'Inter', sans-serif;
             background-color: #f3f4f6; /* Light gray background */
             display: flex;
-            flex-direction: column; /* Added to stack version display and container vertically */
             justify-content: center;
-            align-items: center; /* Center horizontally */
+            align-items: flex-start; /* Align to top for better content display */
             min-height: 100vh;
             padding: 2rem;
         }
@@ -26,7 +25,7 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             max-width: 900px;
             width: 100%;
-            margin-top: 1rem; /* Added margin to separate from version display */
+            /* margin-top removed as version display is now inside */
         }
         .btn {
             @apply px-6 py-3 rounded-lg text-white font-semibold transition-all duration-300 ease-in-out;
@@ -71,10 +70,9 @@
     </style>
 </head>
 <body>
-    <!-- Version Display - Moved to top of body -->
-    <div id="appVersionDisplay" class="w-full max-w-4xl text-right text-gray-500 text-xs p-4"></div>
-
     <div class="container">
+        <!-- Version Display - Moved back inside container -->
+        <div id="appVersionDisplay" class="text-right text-gray-500 text-xs mb-2"></div>
         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">住所から緯度経度、最寄り駅を取得</h1>
 
         <div class="mb-6 bg-blue-50 p-4 rounded-lg shadow-sm">
@@ -163,7 +161,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.3.5"; // ここでバージョンを管理
+        const APP_VERSION = "v1.3.6"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {

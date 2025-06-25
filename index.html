@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.1.8"; // ここでバージョンを管理
+        const APP_VERSION = "v1.2.0"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -452,7 +452,7 @@
                 'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
                 'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
                 'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
-                'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
+                'ヤ': 'ﾔ', 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
                 'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ', 
                 'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
                 'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
@@ -491,7 +491,6 @@
 
             let normalizedAddress = String(address).normalize('NFKC'); // NFKC正規化を先行
 
-            // ★修正: /[０-９]/g に修正
             normalizedAddress = normalizedAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             normalizedAddress = normalizedAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
             console.log(`extractPostalCodeFromAddressString: Normalized address for direct extraction: "${normalizedAddress}"`);
@@ -511,7 +510,7 @@
         }
 
         /**
-         * 外部API（zipcloud）を使用して住所から郵便番号を検索する関数。
+         * 外部API（excelapi.org）を使用して住所から郵便番号を検索する関数。
          * @param {string} pref - 都道府県名。
          * @param {string} city - 市区町村名。
          * @param {string} town - 町域名（番地以下を含む場合あり、API送信時には精製される）。
@@ -523,11 +522,11 @@
                 return ''; // 無効な入力の場合はAPIを叩かない
             }
 
-            // zipcloud.net のAPIを使用
-            const baseUrl = 'https://zipcloud.net/api/search'; 
+            // ★変更点: excelapi.org のAPIを使用
+            const baseUrl = 'https://api.excelapi.org/post/zipcode'; 
             let postalCode = '';
 
-            // Attempt 1: Try with refined town (address3)
+            // Attempt 1: Try with refined town
             let refinedTownForAPI = town;
             
             // NFKC正規化、全角数字・ハイフンの半角変換、括弧内の情報除去、末尾の番地・号・数字の除去
@@ -539,50 +538,50 @@
                                     .replace(/(\d+丁目)$/, '').trim() // 末尾の「数字丁目」を除去
                                     .replace(/[\s　]+$/, ''); // 末尾のスペース除去
 
-            console.log(`郵便番号検索API (Attempt 1): Pref: "${pref}", City: "${city}", Refined Town for API: "${refinedTownForAPI}"`);
+            console.log(`郵便番号検索API (Attempt 1): Prefecture: "${pref}", City: "${city}", Town for API: "${refinedTownForAPI}"`);
             try {
                 const queryParams1 = new URLSearchParams();
-                queryParams1.append('address1', pref); // zipcloud.net のパラメータ名に合わせる
-                queryParams1.append('address2', city); // zipcloud.net のパラメータ名に合わせる
+                queryParams1.append('prefecture', pref); // excelapi.org のパラメータ名に合わせる
+                queryParams1.append('city', city);       // excelapi.org のパラメータ名に合わせる
                 if (refinedTownForAPI) {
-                    queryParams1.append('address3', refinedTownForAPI); // zipcloud.net のパラメータ名に合わせる
+                    queryParams1.append('town', refinedTownForAPI); // excelapi.org のパラメータ名に合わせる
                 }
                 const apiUrl1 = `${baseUrl}?${queryParams1.toString()}`;
                 const response1 = await fetch(apiUrl1);
                 const data1 = await response1.json();
                 console.log(`郵便番号検索API (Attempt 1) Response:`, data1);
 
-                // zipcloud.net のレスポンス構造に合わせる (data.results をチェック)
-                if (response1.ok && data1.status === 200 && data1.results && data1.results.length > 0) { 
-                    postalCode = String(data1.results[0].zipcode).padStart(7, '0');
+                // ★変更点: excelapi.org のレスポンス構造に合わせる (配列として返されることを期待)
+                if (response1.ok && Array.isArray(data1) && data1.length > 0) { 
+                    postalCode = String(data1[0].zip_code).padStart(7, '0'); // zip_code を抽出
                     console.log(`郵便番号検索API (Attempt 1): Found postal code: ${postalCode}`);
                     return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (refined: "${refinedTownForAPI}"). Message: ${data1.message || 'No message'}`);
+                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (refined: "${refinedTownForAPI}"). Response: ${JSON.stringify(data1)}`);
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 1) calling error:`, error);
                 // showMessage(`郵便番号検索中にネットワークエラーが発生しました。インターネット接続またはネットワーク環境（ファイアウォールなど）を確認してください。詳細: ${error.message}`, 'error'); // メイン処理でメッセージ表示するため削除
             }
 
-            // Attempt 2: Fallback - Try without town (address3) if Attempt 1 failed
-            console.log(`郵便番号検索API (Attempt 2 - Fallback): Pref: "${pref}", City: "${city}" (without town)`);
+            // Attempt 2: Fallback - Try without town if Attempt 1 failed
+            console.log(`郵便番号検索API (Attempt 2 - Fallback): Prefecture: "${pref}", City: "${city}" (without town)`);
             try {
                 const queryParams2 = new URLSearchParams();
-                queryParams2.append('address1', pref); // zipcloud.net のパラメータ名に合わせる
-                queryParams2.append('address2', city); // zipcloud.net のパラメータ名に合わせる
+                queryParams2.append('prefecture', pref); // excelapi.org のパラメータ名に合わせる
+                queryParams2.append('city', city);       // excelapi.org のパラメータ名に合わせる
                 const apiUrl2 = `${baseUrl}?${queryParams2.toString()}`;
                 const response2 = await fetch(apiUrl2);
                 const data2 = await response2.json();
                 console.log(`郵便番号検索API (Attempt 2) Response:`, data2);
 
-                // zipcloud.net のレスポンス構造に合わせる (data.results をチェック)
-                if (response2.ok && data2.status === 200 && data2.results && data2.results.length > 0) {
-                    postalCode = String(data2.results[0].zipcode).padStart(7, '0');
+                // ★変更点: excelapi.org のレスポンス構造に合わせる (配列として返されることを期待)
+                if (response2.ok && Array.isArray(data2) && data2.length > 0) {
+                    postalCode = String(data2[0].zip_code).padStart(7, '0');
                     console.log(`郵便番号検索API (Attempt 2): Found postal code: ${postalCode}`);
                     return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API (Attempt 2): No results or API error for "${pref}${city}" (fallback). Message: ${data2.message || 'No message'}`);
+                    console.warn(`郵便番号検索API (Attempt 2): No results or API error for "${pref}${city}" (fallback). Response: ${JSON.stringify(data2)}`);
                 }
             } catch (error) {
                 console.error(`郵便番号検索API (Attempt 2) calling error:`, error);

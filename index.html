@@ -78,27 +78,19 @@
         <div class="mb-6 bg-blue-50 p-4 rounded-lg shadow-sm">
             <h2 class="text-xl font-semibold text-blue-800 mb-3">はじめに</h2>
             <p class="text-gray-700 mb-2">
-                このツールは、CSVファイル内の住所情報から緯度、経度、**最寄り駅とその距離**を取得し、新しいCSVファイルとして出力します。
+                「イドケイド＋」は、CSVファイルに記載された住所からその場所の緯度・経度（位置情報）と最寄り駅を自動で調べ、新しいCSVファイルとして出力するツールです。
             </p>
-            <p class="text-gray-700 font-medium">
-                <span class="text-red-600 font-bold">重要:</span> Google スプレッドシートをご利用の場合、「ファイル」>「ダウンロード」>「カンマ区切り形式（.csv）」でCSVファイルをダウンロードしてからアップロードしてください。
+            <p class="text-gray-700 mb-2">
+                CSVファイルは「カンマ区切り形式（.csv）」でアップロードしてください。<br>
+                Googleスプレッドシートをお使いの場合：<br>
+                「ファイル」→「ダウンロード」→「カンマ区切り形式（.csv）」を選んで保存してください。
             </p>
             <p class="text-gray-700 text-sm mt-3">
-                <span class="font-bold">【APIと駅データについて】</span><br>
-                本ツールは、緯度経度の取得には国土地理院のAPIを利用します。<br>
-                最寄り駅の検索には、お客様がGitHubにアップロードした**GeoJSON形式の駅マスターデータ**を使用します。<br>
-                住所が「1-2-3」のように入力されている場合、API呼び出し前に「1丁目2番3号」のように**自動的に変換**して取得を試みます。<br>
-                データが見つからない場合やAPIエラーの場合は「不明」または空欄と表示されます。<br>
-                実行後、ブラウザのF12キーで開発者ツールを開き、[Console]タブをご確認ください。APIレスポンスや駅データ検索の詳細なログが表示されます。
+                <span class="font-bold">【ツールの特徴】</span><br>
+                住所から自動的に緯度・経度を取得し、その地点から最も近い駅名を自動で検索します。<br>
+                情報が見つからなかった場合は、「不明」と表示されます。
             </p>
-            <p class="text-red-600 text-sm mt-2 font-bold">
-                注: 駅データのURLは、このHTMLコード内の `stationsDataUrl` 変数を、お客様がGitHubにアップロードしたGeoJSONファイルのRaw URLに置き換える必要があります。国土数値情報からダウンロードしたGeoJSONファイルを直接利用できますが、データ量が多い場合、読み込みに時間がかかることがあります。
-            </p>
-            <p class="text-red-600 text-sm mt-2 font-bold">
-                **★重要: 市区町村コードデータのURLを貼り付けてください★**<br>
-                このHTMLコード内の `cityCodesDataUrl` 変数を、お客様がGitHubにアップロードした`city-codes.csv`ファイルのRaw URLに置き換える必要があります。
-                現在の値は `YOUR_RAW_CITY_CODES_CSV_URL_HERE` です。
-            </p>
+            <!-- 削除されたセクション: 駅データの場所に関する注意書き -->
         </div>
 
         <div class="mb-4">
@@ -161,7 +153,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.3.7"; // ここでバージョンを管理
+        const APP_VERSION = "v1.4.1"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -544,8 +536,12 @@
                 const data = await response.json();
                 console.log(`HeartRails API レスポンス (Lat: ${latitude}, Lon: ${longitude}):`, data);
 
-                // レスポンス構造を確認 (response.location[0].postal)
-                if (response.ok && data.response && data.response.location && data.response.location.length > 0 && data.response.location[0].postal) {
+                if (!response.ok) {
+                    console.error(`HeartRails APIリクエスト失敗: ${response.status} ${response.statusText} for address: ${address}`);
+                    return { latitude: 'エラー', longitude: 'エラー', gsiAddressTitle: 'エラー' };
+                }
+
+                if (data && data.length > 0 && data[0].geometry && data[0].geometry.coordinates) {
                     const postalCode = String(data.response.location[0].postal).padStart(7, '0');
                     console.log(`HeartRails API: Found postal code: ${postalCode}`);
                     return postalCode;

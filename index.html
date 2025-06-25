@@ -124,6 +124,12 @@
             <input type="text" id="addressColumn" placeholder="例: 住所" class="mb-4">
         </div>
 
+        <!-- 新しい入力フィールドを追加 -->
+        <div class="mb-6">
+            <label for="kanaSuffixInput" class="block text-gray-700 text-sm font-bold mb-2">店舗名(カナ)に付与する文字列（空欄の場合は何も付与しません）:</label>
+            <input type="text" id="kanaSuffixInput" placeholder="例: PMK" class="mb-4">
+        </div>
+
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
             <button id="geocodeButton" class="btn btn-primary flex-1" disabled>緯度経度と最寄り駅を取得</button>
             <button id="cancelButton" class="btn btn-danger flex-1 hidden" disabled>キャンセル</button>
@@ -154,7 +160,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.3.1"; // ここでバージョンを管理
+        const APP_VERSION = "v1.3.3"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -170,6 +176,7 @@
         const clearFileButton = document.getElementById('clearFileButton');
         const encodingSelect = document.getElementById('encodingSelect');
         const addressColumnInput = document.getElementById('addressColumn');
+        const kanaSuffixInput = document.getElementById('kanaSuffixInput'); // 新しい入力フィールドを取得
         const geocodeButton = document.getElementById('geocodeButton');
         const cancelButton = document.getElementById('cancelButton'); // キャンセルボタンを追加
         const downloadCsvButton = document.getElementById('downloadCsvButton');
@@ -395,6 +402,7 @@
             console.log(`normalizeAddressHyphens: Step 1 (NFKC Normalized): "${tempAddress}"`);
 
             // 明示的に全角数字を半角に変換（NFKCでカバーされるが念のため）
+            // ★修正: /[０-9]/g から /[０-９]/g に変更
             tempAddress = tempAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             console.log(`normalizeAddressHyphens: Step 2 (Half-width digits explicit): "${tempAddress}"`);
 
@@ -491,6 +499,7 @@
 
             let normalizedAddress = String(address).normalize('NFKC'); // NFKC正規化を先行
 
+            // ★修正: /[０-9]/g から /[０-９]/g に変更
             normalizedAddress = normalizedAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             normalizedAddress = normalizedAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
             console.log(`extractPostalCodeFromAddressString: Normalized address for direct extraction: "${normalizedAddress}"`);
@@ -524,7 +533,7 @@
             const baseUrl = 'https://geoapi.heartrails.com/api/json'; 
             // HeartRails APIはx（経度）、y（緯度）で受け取る
             const queryParams = new URLSearchParams({
-                method: 'searchByGeoLocation', // ★修正: メソッド名を searchByGeoLocation に変更
+                method: 'searchByGeoLocation', 
                 x: longitude,
                 y: latitude
             });
@@ -700,7 +709,7 @@
                     const gsiAddressTitle = data[0].properties ? data[0].properties.title : ''; // 国交省住所1用
                     return { latitude, longitude, gsiAddressTitle };
                 } else {
-                    console.warn(`住所 "${address}" の緯度経度または国交省住所が見つかりませんでした（APIレスポンスデータ不足）。`);
+                        console.warn(`住所 "${address}" の緯度経度または国交省住所が見つかりませんでした（APIレスポンスデータ不足）。`);
                     return { latitude: '見つかりません', longitude: '見つかりません', gsiAddressTitle: '見つかりません' };
                 }
             } catch (error) {
@@ -838,6 +847,7 @@
         // 緯度経度取得ボタンクリックイベントリスナー
         geocodeButton.addEventListener('click', async () => {
             const addressColumnName = addressColumnInput.value.trim(); // 入力された列名もトリム
+            const kanaSuffix = kanaSuffixInput.value.trim(); // 新しい入力フィールドから値を取得
 
             if (!addressColumnName) {
                 showMessage('住所の列名を入力してください。', 'error');
@@ -961,9 +971,13 @@
                 outputRowValues['市区町村コード'] = cityCodeValue;
                 outputRowValues['郵便番号'] = postalCodeValue; // 住所から抽出・検索した郵便番号を適用
 
-                // 店舗名(カナ)の変換はここで強制的に行う
+                // 店舗名(カナ)の変換とサフィックス付与
                 const originalKanaValue = row['フリガナ'] || row['店舗名(カナ)'] || row['店舗名'] || ''; // 複数の可能性を考慮
-                outputRowValues['店舗名(カナ)'] = toHalfWidthKatakana(String(originalKanaValue)) + 'PMK';
+                let processedKanaValue = toHalfWidthKatakana(String(originalKanaValue));
+                if (kanaSuffix) { // ユーザーがサフィックスを入力した場合のみ追加
+                    processedKanaValue += kanaSuffix;
+                }
+                outputRowValues['店舗名(カナ)'] = processedKanaValue;
 
 
                 // CSV形式に変換してresultDataに追加
@@ -971,8 +985,9 @@
                     let value = outputRowValues[header];
 
                     // 郵便番号と市区町村コードの頭0欠落対策 (Excelで文字列として認識させる)
+                    // value が null や undefined でないことを確認してから toString() を呼び出す
                     if (header === '郵便番号' || header === '市区町村コード') {
-                        value = `'${value}`; 
+                        value = value !== null && value !== undefined ? `'${value.toString()}` : "''"; // null/undefined の場合も適切に処理
                     }
                     
                     // CSVの値を適切にエスケープ（カンマや引用符、改行を含む場合）

@@ -154,7 +154,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.2.1"; // ここでバージョンを管理
+        const APP_VERSION = "v1.3.0"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -452,7 +452,7 @@
                 'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
                 'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
                 'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
-                'ヤ': 'ﾔ', /* ★修正箇所: ここにあった余分な 'ヤ' を削除 */ 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
+                'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ', 
                 'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ', 
                 'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
                 'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
@@ -510,86 +510,45 @@
         }
 
         /**
-         * 外部API（excelapi.org）を使用して住所から郵便番号を検索する関数。
-         * @param {string} pref - 都道府県名。
-         * @param {string} city - 市区町村名。
-         * @param {string} town - 町域名（番地以下を含む場合あり、API送信時には精製される）。
+         * HeartRails Geo API を使用して緯度経度から郵便番号を取得する関数。
+         * @param {number} latitude - 緯度。
+         * @param {number} longitude - 経度。
          * @returns {Promise<string>} 検索された郵便番号（7桁、ゼロ埋め）または空文字列を解決するPromise。
          */
-        async function getPostalCodeFromExternalAPI(pref, city, town) {
-            if (!pref || !city || pref === '不明' || city === '不明') {
-                console.warn(`郵便番号検索API: 都道府県または市区町村が不明なため、API呼び出しをスキップします。Pref: "${pref}", City: "${city}"`);
-                return ''; // 無効な入力の場合はAPIを叩かない
+        async function getPostalCodeFromHeartRailsAPI(latitude, longitude) {
+            if (latitude === null || longitude === null || isNaN(latitude) || isNaN(longitude)) {
+                console.warn(`HeartRails API: 無効な緯度経度のため、API呼び出しをスキップします。Lat: ${latitude}, Lon: ${longitude}`);
+                return '';
             }
 
-            // excelapi.org のAPIを使用
-            const baseUrl = 'https://api.excelapi.org/post/zipcode'; 
-            let postalCode = '';
+            const baseUrl = 'https://geoapi.heartrails.com/api/json'; 
+            // HeartRails APIはx（経度）、y（緯度）で受け取る
+            const queryParams = new URLSearchParams({
+                method: 'search_point', // 地点検索メソッド
+                x: longitude,
+                y: latitude
+            });
+            const apiUrl = `${baseUrl}?${queryParams.toString()}`;
+            console.log(`HeartRails API: Calling API with URL: ${apiUrl}`);
 
-            // Attempt 1: Try with refined town
-            let refinedTownForAPI = town;
-            
-            // NFKC正規化、全角数字・ハイフンの半角変換、括弧内の情報除去、末尾の番地・号・数字の除去
-            refinedTownForAPI = String(refinedTownForAPI).normalize('NFKC')
-                                    .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-                                    .replace(/[\uFF0D\u30FC]/g, '-')
-                                    .replace(/（[^）]+）/g, '').replace(/\([^)]+\)/g, '').trim()
-                                    .replace(/(\d+[-]?\d*[-]?\d*[番地号]?)$/, '').trim()
-                                    .replace(/(\d+丁目)$/, '').trim() // 末尾の「数字丁目」を除去
-                                    .replace(/[\s　]+$/, ''); // 末尾のスペース除去
-
-            console.log(`郵便番号検索API (Attempt 1): Prefecture: "${pref}", City: "${city}", Town for API: "${refinedTownForAPI}"`);
             try {
-                const queryParams1 = new URLSearchParams();
-                queryParams1.append('prefecture', pref); // excelapi.org のパラメータ名に合わせる
-                queryParams1.append('city', city);       // excelapi.org のパラメータ名に合わせる
-                if (refinedTownForAPI) {
-                    queryParams1.append('town', refinedTownForAPI); // excelapi.org のパラメータ名に合わせる
-                }
-                const apiUrl1 = `${baseUrl}?${queryParams1.toString()}`;
-                const response1 = await fetch(apiUrl1);
-                const data1 = await response1.json();
-                console.log(`郵便番号検索API (Attempt 1) Response:`, data1);
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                console.log(`HeartRails API レスポンス (Lat: ${latitude}, Lon: ${longitude}):`, data);
 
-                // excelapi.org のレスポンス構造に合わせる (配列として返されることを期待)
-                if (response1.ok && Array.isArray(data1) && data1.length > 0) { 
-                    postalCode = String(data1[0].zip_code).padStart(7, '0'); // zip_code を抽出
-                    console.log(`郵便番号検索API (Attempt 1): Found postal code: ${postalCode}`);
+                // レスポンス構造を確認 (response.location[0].postal)
+                if (response.ok && data.response && data.response.location && data.response.location.length > 0 && data.response.location[0].postal) {
+                    const postalCode = String(data.response.location[0].postal).padStart(7, '0');
+                    console.log(`HeartRails API: Found postal code: ${postalCode}`);
                     return postalCode;
                 } else {
-                    console.warn(`郵便番号検索API (Attempt 1): No results or API error for "${pref}${city}${town}" (refined: "${refinedTownForAPI}"). Response: ${JSON.stringify(data1)}`);
+                    console.warn(`HeartRails API: 緯度経度 (${latitude}, ${longitude}) に対応する郵便番号が見つかりませんでした。レスポンス: ${JSON.stringify(data)}`);
+                    return '';
                 }
             } catch (error) {
-                console.error(`郵便番号検索API (Attempt 1) calling error:`, error);
-                // showMessage(`郵便番号検索中にネットワークエラーが発生しました。インターネット接続またはネットワーク環境（ファイアウォールなど）を確認してください。詳細: ${error.message}`, 'error'); // メイン処理でメッセージ表示するため削除
+                console.error(`HeartRails API 呼び出しエラー (Lat: ${latitude}, Lon: ${longitude}):`, error);
+                return '';
             }
-
-            // Attempt 2: Fallback - Try without town if Attempt 1 failed
-            console.log(`郵便番号検索API (Attempt 2 - Fallback): Prefecture: "${pref}", City: "${city}" (without town)`);
-            try {
-                const queryParams2 = new URLSearchParams();
-                queryParams2.append('prefecture', pref); // excelapi.org のパラメータ名に合わせる
-                queryParams2.append('city', city);       // excelapi.org のパラメータ名に合わせる
-                const apiUrl2 = `${baseUrl}?${queryParams2.toString()}`;
-                const response2 = await fetch(apiUrl2);
-                const data2 = await response2.json();
-                console.log(`郵便番号検索API (Attempt 2) Response:`, data2);
-
-                // excelapi.org のレスポンス構造に合わせる (配列として返されることを期待)
-                if (response2.ok && Array.isArray(data2) && data2.length > 0) {
-                    postalCode = String(data2[0].zip_code).padStart(7, '0');
-                    console.log(`郵便番号検索API (Attempt 2): Found postal code: ${postalCode}`);
-                    return postalCode;
-                } else {
-                    console.warn(`郵便番号検索API (Attempt 2): No results or API error for "${pref}${city}" (fallback). Response: ${JSON.stringify(data2)}`);
-                }
-            } catch (error) {
-                console.error(`郵便番号検索API (Attempt 2) calling error:`, error);
-                // showMessage(`郵便番号検索中にネットワークエラーが発生しました。インターネット接続またはネットワーク環境（ファイアウォールなど）を確認してください。詳細: ${error.message}`, 'error'); // メイン処理でメッセージ表示するため削除
-            }
-
-            console.warn(`郵便番号検索API: 最終的に住所 "${pref}${city}${town}" の郵便番号は見つかりませんでした。`);
-            return '';
         }
 
 
@@ -962,14 +921,12 @@
                 }
 
                 // --- 郵便番号の取得 ---
-                let postalCodeValue = extractPostalCodeFromAddressString(inputAddress); // まず住所文字列から直接抽出を試みる
+                // まず住所文字列から直接抽出を試みる
+                let postalCodeValue = extractPostalCodeFromAddressString(inputAddress); 
 
-                if (!postalCodeValue || postalCodeValue === '不明') { // 住所文字列から見つからなかった、または不明だった場合のみ外部APIを叩く
-                    const { pref, city, town } = getPrefCityWardAndRemainingForLookup(normalizedAddress);
-                    // prefとcityが取得できた場合のみ外部APIを呼ぶ
-                    if (pref && city && pref !== '不明' && city !== '不明') { // 市区町村コードが正しく出力されている前提
-                        postalCodeValue = await getPostalCodeFromExternalAPI(pref, city, town);
-                    }
+                // 直接抽出できなかった場合、HeartRails APIを使って緯度経度から郵便番号を検索
+                if ((!postalCodeValue || postalCodeValue === '不明') && typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
+                    postalCodeValue = await getPostalCodeFromHeartRailsAPI(latitude, longitude);
                 }
                 
                 // 郵便番号が見つからなければ「不明」または空文字列にする

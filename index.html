@@ -159,7 +159,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.4.2"; // ここでバージョンを管理
+        const APP_VERSION = "v1.4.3"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -497,7 +497,7 @@
 
             let normalizedAddress = String(address).normalize('NFKC'); // NFKC正規化を先行
 
-            normalizedAddress = normalizedAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            normalizedAddress = normalizedAddress.replace(/[０-9]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
             normalizedAddress = normalizedAddress.replace(/[\uFF0D\u30FC]/g, '-'); // 修正: 全角ハイフンマイナスと長音符の両方を変換
             console.log(`extractPostalCodeFromAddressString: Normalized address for direct extraction: "${normalizedAddress}"`);
 
@@ -542,17 +542,21 @@
                 const data = await response.json();
                 console.log(`HeartRails API レスポンス (Lat: ${latitude}, Lon: ${longitude}):`, data);
 
-                if (!response.ok) {
-                    console.error(`HeartRails APIリクエスト失敗: ${response.status} ${response.statusText} for address: ${address}`);
-                    return { latitude: 'エラー', longitude: 'エラー', gsiAddressTitle: 'エラー' };
-                }
-
-                if (data && data.length > 0 && data[0].geometry && data[0].geometry.coordinates) {
-                    const postalCode = String(data.response.location[0].postal).padStart(7, '0');
-                    console.log(`HeartRails API: Found postal code: ${postalCode}`);
-                    return postalCode;
+                // レスポンスがOKで、かつlocation配列が存在し、空でないことを確認
+                if (response.ok && data.response && Array.isArray(data.response.location) && data.response.location.length > 0) {
+                    // location配列をループし、有効な郵便番号を持つ最初の要素を探す
+                    for (const loc of data.response.location) {
+                        if (loc.postal) { // postalプロパティが存在し、null/undefined/空文字列でないことを確認
+                            const postalCode = String(loc.postal).padStart(7, '0');
+                            console.log(`HeartRails API: Found postal code: ${postalCode}`);
+                            return postalCode;
+                        }
+                    }
+                    // ループが完了しても有効な郵便番号が見つからなかった場合
+                    console.warn(`HeartRails API: 緯度経度 (${latitude}, ${longitude}) に対応する有効な郵便番号が見つかりませんでした。レスポンス内のlocation要素のいずれにもpostal情報がありませんでした。レスポンス: ${JSON.stringify(data)}`);
+                    return '';
                 } else {
-                    console.warn(`HeartRails API: 緯度経度 (${latitude}, ${longitude}) に対応する郵便番号が見つかりませんでした。レスポンス: ${JSON.stringify(data)}`);
+                    console.warn(`HeartRails API: 緯度経度 (${latitude}, ${longitude}) に対応する郵便番号が見つかりませんでした。レスポンス構造が不正またはデータがありません。レスポンス: ${JSON.stringify(data)}`);
                     return '';
                 }
             } catch (error) {

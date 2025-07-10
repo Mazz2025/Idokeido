@@ -96,7 +96,6 @@
                 住所から自動的に緯度・経度を取得し、その地点から最も近い駅名を自動で検索します。<br>
                 情報が見つからなかった場合は、「不明」と表示されます。
             </p>
-            <!-- 削除されたセクション: 駅データの場所に関する注意書き -->
         </div>
 
         <div class="mb-4">
@@ -123,11 +122,20 @@
             <input type="text" id="addressColumn" placeholder="例: 住所" class="mb-4">
         </div>
 
-        <!-- 新しい入力フィールドを追加 -->
         <div class="mb-6">
             <label for="kanaSuffixInput" class="block text-gray-700 text-sm font-bold mb-2">店舗名(カナ)に付与する文字列（空欄の場合は何も付与しません）:</label>
             <input type="text" id="kanaSuffixInput" placeholder="例: PMK" class="mb-4">
         </div>
+
+        <!-- 新しい出力形式選択の追加 -->
+        <div class="mb-4">
+            <label for="outputFormatSelect" class="block text-gray-700 text-sm font-bold mb-2">出力形式を選択:</label>
+            <select id="outputFormatSelect" class="mb-4">
+                <option value="PILOT">PILOT用</option>
+                <option value="RMSA">RMSA用</option>
+            </select>
+        </div>
+        <!-------------------------------->
 
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
             <button id="geocodeButton" class="btn btn-primary flex-1" disabled>緯度経度と最寄り駅を取得</button>
@@ -159,7 +167,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.4.6"; // ここでバージョンを管理
+        const APP_VERSION = "v1.5.1"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -176,6 +184,7 @@
         const encodingSelect = document.getElementById('encodingSelect');
         const addressColumnInput = document.getElementById('addressColumn');
         const kanaSuffixInput = document.getElementById('kanaSuffixInput'); // 新しい入力フィールドを取得
+        const outputFormatSelect = document.getElementById('outputFormatSelect'); // 追加: 出力形式選択
         const geocodeButton = document.getElementById('geocodeButton');
         const cancelButton = document.getElementById('cancelButton'); // キャンセルボタンを追加
         const downloadCsvButton = document.getElementById('downloadCsvButton');
@@ -195,15 +204,14 @@
 
         // --- 駅データのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
         // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/N02-20_Station.geojson'
-        // GitHubにアップロードした N02-20_Station.geojson の「Raw」ボタン（または三点リーダーメニューの「Raw file content」をクリックして開いた新しいタブのURL）を正確に貼り付けてください。
         const stationsDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/main/N02-20_Station.geojson'; 
 
         // --- 市区町村コードデータのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
         // 例: 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'
-        const cityCodesDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'; // ★ここを city-codes.csv のRaw URLに置き換えてください
+        const cityCodesDataUrl = 'https://raw.githubusercontent.com/Mazz2025/Idokeido/refs/heads/main/city-codes.csv'; 
 
-        // --- 出力CSVファイルの最終的なヘッダー順とマッピング ---
-        const OUTPUT_HEADERS = [
+        // --- 出力CSVファイルのヘッダー定義 ---
+        const PILOT_HEADERS = [
             '企業コード', '店舗コード', 'ロケール', '店舗名(漢字)', '店舗名(カナ)', '請求先コード1',
             '請求先コード2', '使用不可フラグ', '郵便番号', 'L2コード', '市区町村コード',
             '国交省住所1', 
@@ -216,16 +224,10 @@
             '実績年月日3', '実績作業量3', '登録日時', '登録ユーザID', '更新日時', '更新ユーザID'
         ];
 
-        // --- 入力CSVと出力CSVのマッピング (特定の変換が必要なもののみ) ---
-        // key: 出力ヘッダー名, value: 入力CSVのヘッダー名または特殊な処理
-        const INPUT_TO_OUTPUT_MAPPING = {
-            '企業名': 'クライアント名', 
-            '店舗名(漢字)': '店舗名',
-            '店舗名(カナ)': 'フリガナ', 
-            // '郵便番号': '郵便番号', // 住所から抽出するため、このマッピングは不要（下の処理で設定）
-            // '国交省住所1': '住所', // GSI APIから取得するため、このマッピングは不要。直接上書きする。
-            '顧客側店舗コード': '顧客店番'
-        };
+        const RMSA_HEADERS = [
+            '企業CD', '店舗CD', '店舗名', '顧客側店舗CD', '郵便番号', '住所1', '住所2', '住所3',
+            '電話番号', 'FAX番号', '最寄り駅', '最寄りバス停', '削除フラグ', '緯度', '経度'
+        ];
 
 
         // アプリ起動時にマスターデータ（駅データ、市区町村コードデータ）を読み込む
@@ -242,7 +244,7 @@
             }
 
             // 市区町村コードデータ読み込み
-            if (!cityCodesDataUrl.startsWith('http') || cityCodesDataUrl === 'YOUR_RAW_CITY_CODES_CSV_URL_HERE') { // ★変更点: プレースホルダーのチェックを追加
+            if (!cityCodesDataUrl.startsWith('http') || cityCodesDataUrl === 'YOUR_RAW_CITY_CODES_CSV_URL_HERE') {
                 showMessage('警告: 市区町村コードデータのURLが設定されていません。市区町村コードの取得機能は利用できません。コード内の `cityCodesDataUrl` 変数を正しいURLに置き換えてください。', 'error');
             } else {
                 await loadCityCodesData();
@@ -566,6 +568,49 @@
             }
         }
 
+        /**
+         * 住所文字列を「都道府県＋市区町村」と「それ以降」に分割する関数。
+         * @param {string} fullAddress - 完全な住所文字列。
+         * @returns {object} address1 (都道府県＋市区町村), address2 (それ以降の住所) を含むオブジェクト。
+         */
+        function splitAddressIntoPrefCityAndRest(fullAddress) {
+            let prefCityPart = '';
+            let restOfAddress = String(fullAddress).normalize('NFKC'); // NFKC正規化
+
+            // 都道府県を抽出
+            const prefRegex = /^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/;
+            const prefMatch = restOfAddress.match(prefRegex);
+            if (prefMatch) {
+                prefCityPart += prefMatch[0];
+                restOfAddress = restOfAddress.substring(prefMatch[0].length);
+            }
+
+            // 市区町村を抽出 (郡を含む場合も考慮)
+            // 最長の市区町村名を先にマッチさせるために、市、区、町、村の順で試す
+            // 例: 横浜市鶴見区 -> 横浜市 + 鶴見区
+            // 例: 西多摩郡日の出町 -> 西多摩郡 + 日の出町
+            const cityWardPattern = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/;
+            const cityWardMatch = restOfAddress.match(cityWardPattern);
+
+            if (cityWardMatch) {
+                prefCityPart += cityWardMatch[0];
+                restOfAddress = restOfAddress.substring(cityWardMatch[0].length);
+            }
+
+            // 残りの住所から、全角数字と全角ハイフンを半角に変換
+            restOfAddress = restOfAddress.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            restOfAddress = restOfAddress.replace(/[\uFF0D\u30FC]/g, '-');
+
+            // 住所1と住所2が空になるのを防ぐためのトリム
+            prefCityPart = prefCityPart.trim();
+            restOfAddress = restOfAddress.trim();
+
+            return {
+                address1: prefCityPart,
+                address2: restOfAddress
+            };
+        }
+
 
         // 都道府県名と市区町村名、町域を抽出するヘルパー関数
         // この関数は、郵便番号検索APIに渡すための「純粋な町名」を抽出することを目的としています。
@@ -854,6 +899,7 @@
         geocodeButton.addEventListener('click', async () => {
             const addressColumnName = addressColumnInput.value.trim(); // 入力された列名もトリム
             const kanaSuffix = kanaSuffixInput.value.trim(); // 新しい入力フィールドから値を取得
+            const selectedOutputFormat = outputFormatSelect.value; // 追加: 選択された出力形式
 
             if (!addressColumnName) {
                 showMessage('住所の列名を入力してください。', 'error');
@@ -880,7 +926,9 @@
             updateProgressBar(0);
 
             resultData = [];
-            resultData.push(OUTPUT_HEADERS.join(',')); // 出力ヘッダー行を追加
+            // 選択された出力形式に応じてヘッダーを設定
+            const currentOutputHeaders = (selectedOutputFormat === 'RMSA') ? RMSA_HEADERS : PILOT_HEADERS;
+            resultData.push(currentOutputHeaders.join(',')); // 出力ヘッダー行を追加
 
             const totalAddresses = parsedData.length;
             let processedCount = 0;
@@ -928,12 +976,14 @@
                     nearestStationNameValue = '住所不明';
                 }
 
-                // --- 市区町村コードの取得 ---
+                // --- 市区町村コードの取得 --- (PILOTのみで使用)
                 let cityCodeValue = '';
-                if (cityCodesData.length > 0) {
-                    cityCodeValue = getCityCode(normalizedAddress);
-                } else {
-                    cityCodeValue = 'データなし';
+                if (selectedOutputFormat === 'PILOT') {
+                    if (cityCodesData.length > 0) {
+                        cityCodeValue = getCityCode(normalizedAddress);
+                    } else {
+                        cityCodeValue = 'データなし';
+                    }
                 }
 
                 // --- 郵便番号の取得 ---
@@ -952,54 +1002,106 @@
 
                 // --- 新しい出力行のデータを構築 ---
                 const outputRowValues = {};
-
-                // 1. Initialize all output headers to empty string
-                OUTPUT_HEADERS.forEach(header => {
-                    outputRowValues[header] = '';
+                currentOutputHeaders.forEach(header => {
+                    outputRowValues[header] = ''; // 全ての出力ヘッダーを初期化
                 });
 
-                // 2. Populate values based on INPUT_TO_OUTPUT_MAPPING or direct header match
-                for (const outputHeader of OUTPUT_HEADERS) {
-                    const mappedInputHeader = INPUT_TO_OUTPUT_MAPPING[outputHeader];
-                    if (mappedInputHeader && headers.includes(mappedInputHeader)) {
-                        outputRowValues[outputHeader] = row[mappedInputHeader] || '';
-                    } else if (headers.includes(outputHeader)) { // 直接ヘッダー名が一致する場合
-                        outputRowValues[outputHeader] = row[outputHeader] || '';
+                // 各出力形式に応じたデータ設定
+                if (selectedOutputFormat === 'PILOT') {
+                    // PILOT出力形式の項目を設定
+                    outputRowValues['企業コード'] = row['企業コード'] || '';
+                    outputRowValues['店舗コード'] = row['店舗コード'] || '';
+                    outputRowValues['ロケール'] = row['ロケール'] || '';
+                    outputRowValues['店舗名(漢字)'] = row['店舗名'] || ''; // 入力CSVの'店舗名'を想定
+                    outputRowValues['請求先コード1'] = row['請求先コード1'] || '';
+                    outputRowValues['請求先コード2'] = row['請求先コード2'] || '';
+                    outputRowValues['使用不可フラグ'] = row['使用不可フラグ'] || '';
+                    outputRowValues['L2コード'] = row['L2コード'] || '';
+                    outputRowValues['住所1'] = row['住所1'] || ''; // 入力CSVの'住所1'をそのまま
+                    outputRowValues['住所2'] = row['住所2'] || ''; // 入力CSVの'住所2'をそのまま
+                    outputRowValues['住所3'] = row['住所3'] || ''; // 入力CSVの'住所3'をそのまま
+                    outputRowValues['電話番号'] = row['電話番号'] || '';
+                    outputRowValues['FAX番号'] = row['FAX番号'] || '';
+                    outputRowValues['担当部門'] = row['担当部門'] || '';
+                    outputRowValues['担当者役職'] = row['担当者役職'] || '';
+                    outputRowValues['担当者名'] = row['担当者名'] || '';
+                    outputRowValues['担当者MAIL'] = row['担当者MAIL'] || '';
+                    outputRowValues['代表業態コード'] = row['代表業態コード'] || '';
+                    outputRowValues['業態中分類コード'] = row['業態中分類コード'] || '';
+                    outputRowValues['旧業態コード'] = row['旧業態コード'] || '';
+                    outputRowValues['旧業態コード中分類'] = row['旧業態コード中分類'] || '';
+                    outputRowValues['管轄DOコード'] = row['管轄DOコード'] || '';
+                    outputRowValues['添付ファイルコード'] = row['添付ファイルコード'] || '';
+                    outputRowValues['ファイル名'] = row['ファイル名'] || '';
+                    outputRowValues['ファイルアップロード日'] = row['ファイルアップロード日'] || '';
+                    outputRowValues['SEJDO名'] = row['SEJDO名'] || '';
+                    outputRowValues['免許品'] = row['免許品'] || '';
+                    outputRowValues['実績年月日1'] = row['実績年月日1'] || '';
+                    outputRowValues['実績作業量1'] = row['実績作業量1'] || '';
+                    outputRowValues['実績年月日2'] = row['実績年月日2'] || '';
+                    outputRowValues['実績作業量2'] = row['実績作業量2'] || '';
+                    outputRowValues['実績年月日3'] = row['実績年月日3'] || '';
+                    outputRowValues['実績作業量3'] = row['実績作業量3'] || '';
+                    outputRowValues['登録日時'] = row['登録日時'] || '';
+                    outputRowValues['登録ユーザID'] = row['登録ユーザID'] || '';
+                    outputRowValues['更新日時'] = row['更新日時'] || '';
+                    outputRowValues['更新ユーザID'] = row['更新ユーザID'] || '';
+
+                    // マッピングされる項目 (入力CSVのヘッダーが異なる場合)
+                    outputRowValues['顧客側店舗コード'] = row['顧客店番'] || '';
+
+                    // APIから取得・加工する項目
+                    outputRowValues['郵便番号'] = postalCodeValue;
+                    outputRowValues['国交省住所1'] = gsiAddressTitle;
+                    if (gsiAddressTitle === '見つかりません' || gsiAddressTitle === 'エラー') {
+                        // 国交省住所が取得できなかった場合、入力住所をPILOTの住所1に格納
+                        outputRowValues['住所1'] = inputAddress; 
                     }
+                    outputRowValues['市区町村コード'] = cityCodeValue;
+                    outputRowValues['緯度'] = latitude;
+                    outputRowValues['経度'] = longitude;
+                    outputRowValues['鉄道最寄駅'] = nearestStationNameValue;
+                    outputRowValues['バス最寄駅'] = ''; // 現在、バス最寄駅の取得機能は未実装
+
+                    // 店舗名(カナ)の変換とサフィックス付与
+                    const originalKanaValuePilot = row['フリガナ'] || row['店舗名(カナ)'] || row['店舗名'] || ''; // 複数の可能性を考慮
+                    let processedKanaValuePilot = toHalfWidthKatakana(String(originalKanaValuePilot));
+                    if (kanaSuffix) { processedKanaValuePilot += kanaSuffix; }
+                    outputRowValues['店舗名(カナ)'] = processedKanaValuePilot;
+
+                } else if (selectedOutputFormat === 'RMSA') {
+                    // RMSA出力形式の項目を設定
+                    outputRowValues['企業CD'] = row['企業コード'] || '';
+                    outputRowValues['店舗CD'] = row['店舗コード'] || '';
+                    outputRowValues['店舗名'] = row['店舗名'] || ''; // RMSAの店舗名は入力CSVの店舗名（漢字）を想定
+                    outputRowValues['顧客側店舗CD'] = row['顧客店番'] || ''; // 入力CSVの'顧客店番'をマッピング
+                    
+                    // APIから取得・加工する項目
+                    outputRowValues['郵便番号'] = postalCodeValue;
+                    
+                    // 住所の分割
+                    const { address1, address2 } = splitAddressIntoPrefCityAndRest(inputAddress);
+                    outputRowValues['住所1'] = address1; // 市区町村まで
+                    outputRowValues['住所2'] = address2; // それ以降
+                    outputRowValues['住所3'] = ''; // RMSAの住所3は現状空欄
+
+                    outputRowValues['電話番号'] = row['電話番号'] || '';
+                    outputRowValues['FAX番号'] = row['FAX番号'] || '';
+                    outputRowValues['最寄り駅'] = nearestStationNameValue; // PILOTの鉄道最寄駅と同じ値
+                    outputRowValues['最寄りバス停'] = ''; // 現在、バス最寄駅の取得機能は未実装
+                    outputRowValues['削除フラグ'] = row['使用不可フラグ'] || ''; // 入力CSVの'使用不可フラグ'をマッピング
+                    outputRowValues['緯度'] = latitude;
+                    outputRowValues['経度'] = longitude;
                 }
-
-                // 3. Overwrite/add values obtained from APIs and master data lookup.
-                //    These values always take precedence over anything copied from the input CSV.
-                outputRowValues['国交省住所1'] = gsiAddressTitle;
-
-                // 国交省住所1が変換できなかった場合に住所1に元の住所を出力
-                if (gsiAddressTitle === '見つかりません' || gsiAddressTitle === 'エラー') {
-                    outputRowValues['住所1'] = inputAddress;
-                }
-                // それ以外の場合、住所1は入力CSVからコピーされた値（もしあれば）または空のまま
-
-                outputRowValues['緯度'] = latitude;
-                outputRowValues['経度'] = longitude;
-                outputRowValues['鉄道最寄駅'] = nearestStationNameValue;
-                outputRowValues['市区町村コード'] = cityCodeValue;
-                outputRowValues['郵便番号'] = postalCodeValue; // 住所から抽出・検索した郵便番号を適用
-
-                // 店舗名(カナ)の変換とサフィックス付与
-                const originalKanaValue = row['フリガナ'] || row['店舗名(カナ)'] || row['店舗名'] || ''; // 複数の可能性を考慮
-                let processedKanaValue = toHalfWidthKatakana(String(originalKanaValue));
-                if (kanaSuffix) { // ユーザーがサフィックスを入力した場合のみ追加
-                    processedKanaValue += kanaSuffix;
-                }
-                outputRowValues['店舗名(カナ)'] = processedKanaValue;
 
 
                 // CSV形式に変換してresultDataに追加
-                const csvRow = OUTPUT_HEADERS.map(header => {
+                const csvRow = currentOutputHeaders.map(header => {
                     let value = outputRowValues[header];
 
                     // 郵便番号と市区町村コードの頭0欠落対策 (Excelで文字列として認識させる)
                     // value が null や undefined でないことを確認してから toString() を呼び出す
-                    if (header === '郵便番号' || header === '市区町村コード') {
+                    if (header === '郵便番号' || (header === '市区町村コード' && selectedOutputFormat === 'PILOT')) {
                         // 郵便番号は既に「000-0000」形式になっているため、そのままExcel用にシングルクォーテーションで囲む
                         value = value !== null && value !== undefined ? `'${value.toString()}` : "''"; 
                     }
@@ -1056,8 +1158,9 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            // ダウンロードファイル名にバージョンを付加
-            a.download = `データ_変換済み_${APP_VERSION}.csv`; 
+            // ダウンロードファイル名にバージョンと形式を付加
+            const fileNamePrefix = outputFormatSelect.value === 'RMSA' ? 'RMSA用' : 'PILOT用';
+            a.download = `${fileNamePrefix}_データ_変換済み_${APP_VERSION}.csv`; 
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

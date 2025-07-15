@@ -131,8 +131,8 @@
         <div class="mb-4">
             <label for="outputFormatSelect" class="block text-gray-700 text-sm font-bold mb-2">出力形式を選択:</label>
             <select id="outputFormatSelect" class="mb-4">
-                <option value="PILOT">for PILOT</option>
-                <option value="RMSA">for RMSA</option>
+                <option value="PILOT">PILOT用</option>
+                <option value="RMSA">RMSA用</option>
             </select>
         </div>
         <!-------------------------------->
@@ -167,7 +167,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.5.1"; // ここでバージョンを管理
+        const APP_VERSION = "v1.5.3"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -201,6 +201,7 @@
         let stationsData = []; // 駅マスターデータを保持
         let cityCodesData = []; // 市区町村コードマスターデータを保持
         let isProcessingCancelled = false; // 処理中断フラグ
+        let ambiguousStationNames = new Set(); // 曖昧な駅名（複数都道府県に存在する駅名）を保持
 
         // --- 駅データのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
         // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/N02-20_Station.geojson'
@@ -458,7 +459,7 @@
                 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ', 
                 'タ': 'ﾀ', 'チ': 'ﾁ', 'ツ': 'ﾂ', 'テ': 'ﾃ', 'ト': 'ﾄ',
                 'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
-                'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
+                'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ホ',
                 'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
                 'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ', 
                 'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ', 
@@ -511,7 +512,6 @@
             if (postcodeMatch && postcodeMatch[1]) {
                 const postalCode = postcodeMatch[1].replace(/-/g, ''); // ハイフンを除去
                 const formattedPostalCode = postalCode.padStart(7, '0'); // 7桁にゼロ埋め
-                // ★修正点: 郵便番号にハイフンを追加
                 return formattedPostalCode.substring(0, 3) + '-' + formattedPostalCode.substring(3);
             }
             console.log(`extractPostalCodeFromAddressString: No postal code found directly in address string: "${address}"`);
@@ -551,7 +551,6 @@
                     for (const loc of data.response.location) {
                         if (loc.postal) { // postalプロパティが存在し、null/undefined/空文字列でないことを確認
                             const postalCode = String(loc.postal).padStart(7, '0');
-                            // ★修正点: 郵便番号にハイフンを追加
                             return postalCode.substring(0, 3) + '-' + postalCode.substring(3);
                         }
                     }
@@ -587,8 +586,6 @@
 
             // 市区町村を抽出 (郡を含む場合も考慮)
             // 最長の市区町村名を先にマッチさせるために、市、区、町、村の順で試す
-            // 例: 横浜市鶴見区 -> 横浜市 + 鶴見区
-            // 例: 西多摩郡日の出町 -> 西多摩郡 + 日の出町
             const cityWardPattern = /^((?:.+?郡)?(?:.+?(?:市|区|町|村)))/;
             const cityWardMatch = restOfAddress.match(cityWardPattern);
 
@@ -790,6 +787,7 @@
                 }
 
                 if (geoJson && geoJson.features && geoJson.features.length > 0) { // features配列が存在し、かつ空でないことを確認
+                    const stationNamePrefectureMap = new Map(); // 駅名 -> Set<都道府県名> のマップ
                     let tempStations = geoJson.features.map(feature => {
                         let longitude = null;
                         let latitude = null;
@@ -817,10 +815,18 @@
 
                         // 駅名はプロパティの N02_005 に格納されていることを想定
                         const station_name = feature.properties ? feature.properties.N02_005 : '不明な駅名';
+                        // 都道府県名はプロパティの N02_002 に格納されていることを想定
+                        const prefecture_name = feature.properties ? feature.properties.N02_002 : '';
 
                         // 緯度経度が数値であることを確認し、無効な場合はnullを返す
                         if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
-                            return { station_name, latitude, longitude };
+                            // 曖昧な駅名判定のためにマップを更新
+                            if (!stationNamePrefectureMap.has(station_name)) {
+                                stationNamePrefectureMap.set(station_name, new Set());
+                            }
+                            stationNamePrefectureMap.get(station_name).add(prefecture_name);
+
+                            return { station_name, latitude, longitude, prefecture_name }; // 都道府県名も格納
                         } else {
                             console.warn(`駅名 "${station_name}" のGeoJSONに無効な緯度経度が見つかりました (タイプ: ${feature.geometry ? feature.geometry.type : '不明'}, Lat: ${latitude}, Lon: ${longitude}). この駅はスキップされます。`);
                             return null; // この駅は後でフィルタリングで除外される
@@ -830,11 +836,18 @@
                     stationsData = tempStations.filter(station => station !== null); // nullをフィルタリングして除外
                     console.log('フィルタリング後の駅データ:', stationsData); 
 
+                    // 曖昧な駅名を特定
+                    ambiguousStationNames.clear(); // 念のためクリア
+                    stationNamePrefectureMap.forEach((prefectures, stationName) => {
+                        if (prefectures.size > 1) {
+                            ambiguousStationNames.add(stationName);
+                        }
+                    });
+                    console.log('曖昧な駅名リスト:', Array.from(ambiguousStationNames));
+
                     if (stationsData.length > 0) {
                         console.log(`駅データ ${stationsData.length} 件の読み込みとフィルタリングが完了しました。`);
-                        // showMessage(`駅データ ${stationsData.length} 件を読み込みました。`, 'success'); // 複数データ読み込みのメッセージはonloadで一括
                     } else {
-                        // 全てのfeaturesがフィルタリングで除外された場合
                         showMessage('GeoJSONファイルには有効な駅データが含まれていませんでした。緯度経度情報が正しいか、サポートされているgeometryタイプか確認してください。', 'error');
                         stationsData = []; // stationsDataを確実に空にする
                     }
@@ -844,7 +857,6 @@
                 }
             } catch (error) {
                 console.error('駅データ読み込み中に致命的なエラー:', error); 
-                // throwされたエラーメッセージを直接表示
                 showMessage(`駅データを読み込めませんでした: ${error.message} ネットワーク接続またはURL、GeoJSONファイルの構造を確認してください。`, 'error'); 
                 stationsData = [];
             }
@@ -959,7 +971,7 @@
 
                     for (const station of stationsData) {
                         // 緯度経度が数値であることを確認
-                        if (typeof station.latitude === 'number' && typeof station.latitude === 'number' && !isNaN(station.latitude) && !isNaN(station.longitude)) {
+                        if (typeof station.latitude === 'number' && typeof station.longitude === 'number' && !isNaN(station.latitude) && !isNaN(station.longitude)) {
                             const dist = haversineDistance(latitude, longitude, station.latitude, station.longitude);
                             if (dist < minDistance) {
                                 minDistance = dist;
@@ -969,6 +981,10 @@
                     }
                     if (nearestStation) {
                         nearestStationNameValue = nearestStation.station_name;
+                        // 曖昧な駅名の場合、都道府県名を付加 (半角括弧に変更)
+                        if (ambiguousStationNames.has(nearestStation.station_name) && nearestStation.prefecture_name) {
+                            nearestStationNameValue += ` (${nearestStation.prefecture_name})`;
+                        }
                     }
                 } else if (stationsData.length === 0) {
                     nearestStationNameValue = '駅データなし';

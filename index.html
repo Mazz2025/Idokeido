@@ -167,7 +167,7 @@
 
     <script>
         // --- アプリケーションバージョン情報 ---
-        const APP_VERSION = "v1.5.3"; // ここでバージョンを管理
+        const APP_VERSION = "v1.6.9"; // ここでバージョンを管理
 
         // HTML内のバージョン表示を更新
         document.addEventListener('DOMContentLoaded', () => {
@@ -201,7 +201,8 @@
         let stationsData = []; // 駅マスターデータを保持
         let cityCodesData = []; // 市区町村コードマスターデータを保持
         let isProcessingCancelled = false; // 処理中断フラグ
-        let ambiguousStationNames = new Set(); // 曖昧な駅名（複数都道府県に存在する駅名）を保持
+        // 曖昧な駅名を保持するSet。異なる都道府県に存在する同名駅が格納される
+        let ambiguousStationNames = new Set(); 
 
         // --- 駅データのURLを指定 (ここをあなたのRaw URLに置き換える必要があります！) ---
         // 例: 'https://raw.githubusercontent.com/your-username/your-repo/main/N02-20_Station.geojson'
@@ -229,6 +230,23 @@
             '企業CD', '店舗CD', '店舗名', '顧客側店舗CD', '郵便番号', '住所1', '住所2', '住所3',
             '電話番号', 'FAX番号', '最寄り駅', '最寄りバス停', '削除フラグ', '緯度', '経度'
         ];
+
+        // 都道府県コードと都道府県名のマッピング (今回は直接使用しないが、参考として残す)
+        const PREFECTURE_CODES = {
+            "01": "北海道", "02": "青森県", "03": "岩手県", "04": "宮城県", "05": "秋田県",
+            "06": "山形県", "07": "福島県", "08": "茨城県", "09": "栃木県", "10": "群馬県",
+            "11": "埼玉県", "12": "千葉県", "13": "東京都", "14": "神奈川県", "15": "新潟県",
+            "16": "富山県", "17": "石川県", "18": "福井県", "19": "山梨県", "20": "長野県",
+            "21": "岐阜県", "22": "静岡県", "23": "愛知県", "24": "三重県", "25": "滋賀県",
+            "26": "京都府", "27": "大阪府", "28": "兵庫県", "29": "奈良県", "30": "和歌山県",
+            "31": "鳥取県", "32": "島根県", "33": "岡山県", "34": "広島県", "35": "山口県",
+            "36": "徳島県", "37": "香川県", "38": "愛媛県", "39": "高知県", "40": "福岡県",
+            "41": "佐賀県", "42": "長崎県", "43": "熊本県", "44": "大分県", "45": "宮崎県",
+            "46": "鹿児島県", "47": "沖縄県"
+        };
+
+        // 遅延関数
+        const delay = ms => new Promise(res => setTimeout(res, ms));
 
 
         // アプリ起動時にマスターデータ（駅データ、市区町村コードデータ）を読み込む
@@ -545,16 +563,13 @@
                 const data = await response.json();
                 console.log(`HeartRails API レスポンス (Lat: ${latitude}, Lon: ${longitude}):`, data);
 
-                // レスポンスがOKで、かつlocation配列が存在し、空でないことを確認
                 if (response.ok && data.response && Array.isArray(data.response.location) && data.response.location.length > 0) {
-                    // location配列をループし、有効な郵便番号を持つ最初の要素を探す
                     for (const loc of data.response.location) {
-                        if (loc.postal) { // postalプロパティが存在し、null/undefined/空文字列でないことを確認
+                        if (loc.postal) { 
                             const postalCode = String(loc.postal).padStart(7, '0');
                             return postalCode.substring(0, 3) + '-' + postalCode.substring(3);
                         }
                     }
-                    // ループが完了しても有効な郵便番号が見つからなかった場合
                     console.warn(`HeartRails API: 緯度経度 (${latitude}, ${longitude}) に対応する有効な郵便番号が見つかりませんでした。レスポンス内のlocation要素のいずれにもpostal情報がありませんでした。レスポンス: ${JSON.stringify(data)}`);
                     return '';
                 } else {
@@ -766,99 +781,157 @@
             }
         }
 
+        // HeartRails Geo API を使用して緯度経度から都道府県名を取得する関数
+        async function getPrefectureNameFromCoordinates(latitude, longitude) {
+            if (latitude === null || longitude === null || isNaN(latitude) || isNaN(longitude)) {
+                return '';
+            }
+            const baseUrl = 'https://geoapi.heartrails.com/api/json';
+            const queryParams = new URLSearchParams({
+                method: 'searchByGeoLocation',
+                x: longitude,
+                y: latitude
+            });
+            const apiUrl = `${baseUrl}?${queryParams.toString()}`;
+
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                if (response.ok && data.response && Array.isArray(data.response.location) && data.response.location.length > 0) {
+                    return String(data.response.location[0].prefecture || '').trim();
+                } else {
+                    return '';
+                }
+            } catch (error) {
+                console.error(`都道府県名取得API呼び出しエラー (Lat: ${latitude}, Lon: ${longitude}):`, error);
+                return '';
+            }
+        }
+
         // 駅データを外部から読み込む関数 (GeoJSON対応)
         async function loadStationsData() {
-            showMessage('駅データを読み込み中...', 'info');
+            showMessage('駅データを読み込み中...（駅名の重複判定中）', 'info');
             try {
                 const response = await fetch(stationsDataUrl);
                 if (!response.ok) {
-                    const errorText = await response.text(); // レスポンスボディを取得してより詳細な情報
+                    const errorText = await response.text();
                     console.error('Fetch response not OK:', response.status, response.statusText, 'Body:', errorText);
                     throw new Error(`ネットワークエラー: ${response.status} ${response.statusText}. URLまたはネットワーク接続を確認してください。`);
                 }
                 
                 let geoJson;
                 try {
-                    geoJson = await response.json(); // GeoJSONとしてパース
+                    geoJson = await response.json();
                     console.log('GeoJSONを正常にパースしました:', geoJson); 
                 } catch (jsonError) {
                     console.error('GeoJSONのパース中にエラー:', jsonError);
                     throw new Error(`GeoJSONファイル形式が不正です。ファイルが破損しているか、有効なGeoJSON形式ではありません。`);
                 }
 
-                if (geoJson && geoJson.features && geoJson.features.length > 0) { // features配列が存在し、かつ空でないことを確認
-                    const stationNamePrefectureMap = new Map(); // 駅名 -> Set<都道府県名> のマップ
-                    let tempStations = geoJson.features.map(feature => {
+                if (geoJson && geoJson.features && geoJson.features.length > 0) {
+                    // 駅名 -> 駅オブジェクトの配列 (重複判定用)
+                    const stationNameInstancesMap = new Map();
+
+                    // 1. まずGeoJSONをパースし、駅名と緯度経度を抽出
+                    geoJson.features.forEach(feature => {
                         let longitude = null;
                         let latitude = null;
 
-                        // GeoJSONのgeometryタイプに応じて座標を抽出
                         if (feature.geometry && feature.geometry.coordinates) {
                             if (feature.geometry.type === "Point") {
                                 longitude = feature.geometry.coordinates[0];
                                 latitude = feature.geometry.coordinates[1];
                             } else if (feature.geometry.type === "LineString") {
-                                // LineStringの場合、最初の点の座標を使用
                                 if (feature.geometry.coordinates.length > 0) {
                                     longitude = feature.geometry.coordinates[0][0];
                                     latitude = feature.geometry.coordinates[0][1];
                                 }
                             } else if (feature.geometry.type === "MultiLineString") {
-                                // MultiLineStringの場合、最初の線分の最初の点の座標を使用
                                 if (feature.geometry.coordinates.length > 0 && feature.geometry.coordinates[0].length > 0) {
                                     longitude = feature.geometry.coordinates[0][0][0];
                                     latitude = feature.geometry.coordinates[0][0][1];
                                 }
                             }
-                            // 他のGeometryCollectionなどの複雑なタイプは現時点では考慮しない
                         }
 
-                        // 駅名はプロパティの N02_005 に格納されていることを想定
-                        const station_name = feature.properties ? feature.properties.N02_005 : '不明な駅名';
-                        // 都道府県名はプロパティの N02_002 に格納されていることを想定
-                        const prefecture_name = feature.properties ? feature.properties.N02_002 : '';
-
-                        // 緯度経度が数値であることを確認し、無効な場合はnullを返す
+                        const station_name = feature.properties ? String(feature.properties.N02_005 || '').trim() : '不明な駅名';
+                        
                         if (typeof latitude === 'number' && typeof longitude === 'number' && !isNaN(latitude) && !isNaN(longitude)) {
-                            // 曖昧な駅名判定のためにマップを更新
-                            if (!stationNamePrefectureMap.has(station_name)) {
-                                stationNamePrefectureMap.set(station_name, new Set());
+                            if (!stationNameInstancesMap.has(station_name)) {
+                                stationNameInstancesMap.set(station_name, []);
                             }
-                            stationNamePrefectureMap.get(station_name).add(prefecture_name);
-
-                            return { station_name, latitude, longitude, prefecture_name }; // 都道府県名も格納
+                            // ここではまだ prefecture_name は空
+                            stationNameInstancesMap.get(station_name).push({ station_name, latitude, longitude, prefecture_name: '' }); 
                         } else {
-                            console.warn(`駅名 "${station_name}" のGeoJSONに無効な緯度経度が見つかりました (タイプ: ${feature.geometry ? feature.geometry.type : '不明'}, Lat: ${latitude}, Lon: ${longitude}). この駅はスキップされます。`);
-                            return null; // この駅は後でフィルタリングで除外される
+                            console.warn(`駅名 "${station_name}" のGeoJSONに無効な緯度経度が見つかりました. この駅はスキップされます。`);
                         }
                     });
-                    
-                    stationsData = tempStations.filter(station => station !== null); // nullをフィルタリングして除外
-                    console.log('フィルタリング後の駅データ:', stationsData); 
 
-                    // 曖昧な駅名を特定
-                    ambiguousStationNames.clear(); // 念のためクリア
-                    stationNamePrefectureMap.forEach((prefectures, stationName) => {
-                        if (prefectures.size > 1) {
+                    // 2. 駅名が重複している駅に限り、都道府県名を取得
+                    const stationsToFetchPref = [];
+                    stationNameInstancesMap.forEach((instances, stationName) => {
+                        if (instances.length > 1) { // 駅名が重複している場合のみ
+                            instances.forEach(instance => {
+                                stationsToFetchPref.push(instance);
+                            });
+                        }
+                    });
+
+                    let processedCountForPref = 0;
+                    if (stationsToFetchPref.length > 0) {
+                        showMessage(`駅データ読み込み中...（重複駅の都道府県名を取得中: ${stationsToFetchPref.length} 件）`, 'info');
+                        for (const station of stationsToFetchPref) {
+                            if (typeof station.latitude === 'number' && typeof station.longitude === 'number' && !isNaN(station.latitude) && !isNaN(station.longitude)) {
+                                station.prefecture_name = await getPrefectureNameFromCoordinates(station.latitude, station.longitude);
+                                await delay(50); // API呼び出しごとに遅延
+                            }
+                            processedCountForPref++;
+                            updateProgressBar((processedCountForPref / stationsToFetchPref.length) * 100);
+                        }
+                    } else {
+                        showMessage('駅データ読み込み中...（重複する駅名はありませんでした）', 'info');
+                        updateProgressBar(100);
+                    }
+
+                    // 3. 最終的な stationsData を構築し、ambiguousStationNames を確定
+                    stationsData = Array.from(stationNameInstancesMap.values()).flat(); // 全ての駅インスタンスをフラットな配列にする
+
+                    ambiguousStationNames.clear(); 
+                    const tempStationNamePrefecturesMap = new Map(); // 駅名 -> Set<都道府県名> のマップ
+
+                    stationsData.forEach(station => {
+                        if (station.prefecture_name) { // 都道府県名が取得できた駅のみ
+                            if (!tempStationNamePrefecturesMap.has(station.station_name)) {
+                                tempStationNamePrefecturesMap.set(station.station_name, new Set());
+                            }
+                            tempStationNamePrefecturesMap.get(station.station_name).add(station.prefecture_name);
+                        }
+                    });
+
+                    tempStationNamePrefecturesMap.forEach((prefecturesSet, stationName) => {
+                        if (prefecturesSet.size > 1) { // 複数の都道府県に同じ駅名が存在する場合
                             ambiguousStationNames.add(stationName);
                         }
                     });
-                    console.log('曖昧な駅名リスト:', Array.from(ambiguousStationNames));
+                    console.log('重複する駅名リスト (異なる都道府県に存在する):', Array.from(ambiguousStationNames));
 
                     if (stationsData.length > 0) {
-                        console.log(`駅データ ${stationsData.length} 件の読み込みとフィルタリングが完了しました。`);
+                        showMessage(`駅データ ${stationsData.length} 件の読み込みと重複駅名判定が完了しました。`, 'success');
                     } else {
                         showMessage('GeoJSONファイルには有効な駅データが含まれていませんでした。緯度経度情報が正しいか、サポートされているgeometryタイプか確認してください。', 'error');
-                        stationsData = []; // stationsDataを確実に空にする
+                        stationsData = [];
                     }
                 } else {
                     showMessage('GeoJSONファイルが空か、形式が不正です。GeoJSONファイルに "features" 配列が含まれているか、またはその配列が空でないか確認してください。', 'error');
                     stationsData = [];
                 }
             } catch (error) {
-                console.error('駅データ読み込み中に致命的なエラー:', error); 
-                showMessage(`駅データを読み込めませんでした: ${error.message} ネットワーク接続またはURL、GeoJSONファイルの構造を確認してください。`, 'error'); 
+                console.error('駅データ読み込み中に致命的なエラー:', error);
+                showMessage(`駅データを読み込めませんでした: ${error.message} ネットワーク接続またはURL、GeoJSONファイルの構造を確認してください。`, 'error');
                 stationsData = [];
+            } finally {
+                // 最終的なプログレスバーは必ず100%にする
+                updateProgressBar(100); 
             }
         }
 
@@ -981,9 +1054,14 @@
                     }
                     if (nearestStation) {
                         nearestStationNameValue = nearestStation.station_name;
-                        // 曖昧な駅名の場合、都道府県名を付加 (半角括弧に変更)
-                        if (ambiguousStationNames.has(nearestStation.station_name) && nearestStation.prefecture_name) {
-                            nearestStationNameValue += ` (${nearestStation.prefecture_name})`;
+                        // 異なる都道府県に同名駅が存在する場合のみ、その駅の都道府県名を付加
+                        if (ambiguousStationNames.has(nearestStation.station_name)) {
+                            if (nearestStation.prefecture_name) {
+                                nearestStationNameValue += ` (${nearestStation.prefecture_name})`;
+                            } else {
+                                // 万が一、都道府県名が取得できなかった場合のフォールバック
+                                nearestStationNameValue += ` (同名駅あり)`; 
+                            }
                         }
                     }
                 } else if (stationsData.length === 0) {
@@ -1055,7 +1133,7 @@
                     outputRowValues['実績年月日1'] = row['実績年月日1'] || '';
                     outputRowValues['実績作業量1'] = row['実績作業量1'] || '';
                     outputRowValues['実績年月日2'] = row['実績年月日2'] || '';
-                    outputRowValues['実績作業量2'] = row['実績作業量2'] || '';
+                            outputRowValues['実績作業量2'] = row['実績作業量2'] || '';
                     outputRowValues['実績年月日3'] = row['実績年月日3'] || '';
                     outputRowValues['実績作業量3'] = row['実績作業量3'] || '';
                     outputRowValues['登録日時'] = row['登録日時'] || '';
@@ -1104,7 +1182,7 @@
                     outputRowValues['電話番号'] = row['電話番号'] || '';
                     outputRowValues['FAX番号'] = row['FAX番号'] || '';
                     outputRowValues['最寄り駅'] = nearestStationNameValue; // PILOTの鉄道最寄駅と同じ値
-                    outputRowValues['最寄りバス停'] = ''; // 現在、バス最寄駅の取得機能は未実装
+                    outputRowValues['最寄りバス停'] = ''; // 現在、バス最寄り駅の取得機能は未実装
                     outputRowValues['削除フラグ'] = row['使用不可フラグ'] || ''; // 入力CSVの'使用不可フラグ'をマッピング
                     outputRowValues['緯度'] = latitude;
                     outputRowValues['経度'] = longitude;
